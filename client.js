@@ -29,22 +29,26 @@ window.__ModuleLoader__.load({
     const en = {
       title: 'Cards',
       heading: 'Cards in answers',
-      hint: 'Paste a ```dsh-card block with JSON — it renders as a card. Keys: title, subtitle, rows, list, note, tone.',
+      hint: 'Скопируйте пример ниже и вставьте его в сообщение ассистенту или в свой ответ — блок превратится в карточку.',
       example: 'Example',
       preview: 'Preview',
       broken: 'Could not read the block',
       open: 'Open',
       collapse: 'Collapse',
+      copy: 'Copy example',
+      copied: 'Copied — paste it into a message',
     }
     const ru = {
       title: 'Карточки',
       heading: 'Карточки в ответах',
-      hint: 'Блок ```dsh-card с JSON превращается в карточку. Ключи: title, subtitle, rows, list, note, tone.',
+      hint: 'Скопируйте пример ниже и вставьте его в сообщение ассистенту или в свой ответ — блок превратится в карточку.',
       example: 'Пример',
       preview: 'Предпросмотр',
       broken: 'Не удалось прочитать блок',
       open: 'Открыть',
       collapse: 'Свернуть',
+      copy: 'Скопировать пример',
+      copied: 'Скопировано — вставьте в сообщение',
     }
 
     const S = {
@@ -202,14 +206,26 @@ window.__ModuleLoader__.load({
       const t = (key) => translate(key)
       const [open, setOpen] = React.useState(false)
       const [text, setText] = React.useState(EXAMPLE)
+      const [notice, setNotice] = React.useState('')
 
       if (!open) {
         return h(
           'div',
-          { style: S.card, flexDirection: 'column' },
-          h('span', { style: { fontSize: 13.5, fontWeight: 600 } }, t('heading')),
-          h('span', { style: { fontSize: 12, opacity: 0.7, lineHeight: 1.5 } }, t('hint')),
-          h('button', { style: S.button, onClick: () => setOpen(true) }, t('open')),
+          {
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '6px 10px',
+              borderRadius: 8,
+              border: '1px solid rgba(128,128,128,0.22)',
+              background: 'rgba(128,128,128,0.05)',
+              fontSize: 13,
+            },
+          },
+          h('span', { style: { fontWeight: 600 } }, t('heading')),
+          h('span', { style: { fontSize: 12, opacity: 0.6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, t('hint')),
+          h('button', { style: { ...S.button, marginLeft: 'auto', flex: '0 0 auto' }, onClick: () => setOpen(true) }, t('open')),
         )
       }
 
@@ -238,7 +254,27 @@ window.__ModuleLoader__.load({
               : h('span', { style: { fontSize: 12, color: '#d1242f' } }, `${t('broken')}: ${parsed.reason}`),
           ),
         ),
-        h('button', { style: S.button, onClick: () => setOpen(false) }, t('collapse')),
+        h(
+          'div',
+          { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
+          h(
+            'button',
+            {
+              style: S.button,
+              onClick: async () => {
+                try {
+                  await navigator.clipboard.writeText('\u0060\u0060\u0060dsh-card\n' + text + '\n\u0060\u0060\u0060')
+                  setNotice(t('copied'))
+                } catch {
+                  setNotice(t('copied'))
+                }
+              },
+            },
+            t('copy'),
+          ),
+          h('button', { style: S.button, onClick: () => setOpen(false) }, t('collapse')),
+          notice !== '' ? h('span', { style: { fontSize: 12, opacity: 0.75 } }, notice) : null,
+        ),
       )
     }
 
