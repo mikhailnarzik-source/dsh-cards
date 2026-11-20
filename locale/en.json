@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Cards",
+    "description": "A ```dsh-card block with JSON renders as a tidy card: a title, key–value rows, a list and a note.",
+    "detail": "docs/DETAIL.md"
+  }
+}
