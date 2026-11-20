@@ -1,6 +1,6 @@
 {
   "name": "dsh-cards",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Карточки в ответах ассистента: блок ```dsh-card с заголовком, строками и списком превращается в аккуратную карточку",
   "type": "module",
   "license": "MIT",
@@ -49,5 +49,6 @@
         "@deepseek-ai/dsh-client-ui-slots"
       ]
     }
-  }
+  },
+  "icon": "./icon.svg"
 }
