@@ -202,7 +202,27 @@ window.__ModuleLoader__.load({
       2,
     )
 
-    function CardsCard() {
+        /** Рамка карточки: тот же вид, что у остальных наших плагинов. */
+    function CardFrame({ children }) {
+      return h(
+        'div',
+        {
+          style: {
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            padding: '10px 12px',
+            borderRadius: 10,
+            border: '1px solid rgba(128,128,128,0.28)',
+            background: 'rgba(128,128,128,0.07)',
+            boxSizing: 'border-box',
+          },
+        },
+        children,
+      )
+    }
+
+function CardsCard() {
       const t = (key) => translate(key)
       const [open, setOpen] = React.useState(false)
       const [text, setText] = React.useState(EXAMPLE)
@@ -292,7 +312,7 @@ window.__ModuleLoader__.load({
               label: () => translate('title'),
               locale: NS,
             },
-            CardsCard,
+            () => h(CardFrame, null, h(CardsCard)),
           ),
         )
       } catch (error) {
