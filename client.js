@@ -52,7 +52,7 @@ window.__ModuleLoader__.load({
     }
 
     const S = {
-      card: { display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start', fontSize: 13 },
+      card: { position: 'relative', paddingRight: 44, display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start', fontSize: 13 },
       panel: { display: 'flex', flexDirection: 'column', gap: 8, minWidth: 240, flex: '1 1 300px' },
       area: {
         width: '100%',
@@ -106,8 +106,10 @@ window.__ModuleLoader__.load({
           'aria-label': open ? 'Свернуть' : 'Открыть',
           'aria-expanded': open ? 'true' : 'false',
           style: {
-            marginLeft: 'auto',
-            flex: '0 0 auto',
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            zIndex: 2,
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
