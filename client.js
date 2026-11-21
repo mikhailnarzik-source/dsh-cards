@@ -306,6 +306,8 @@ window.__ModuleLoader__.load({
       const results = state.result ?? {}
       const [copied, setCopied] = React.useState(false)
       const ACTIONS_PATH = '/api/dsh-cards/action'
+      // Цвет результата только у действий, которые что-то выполняют.
+      const COLORED_KINDS = ['git-push', 'git-pull', 'run-tests', 'dsh-plugin-add', 'dsh-plugin-update']
 
       const run = async (action) => {
         setState({ busy: action.label, note: '' })
@@ -319,7 +321,7 @@ window.__ModuleLoader__.load({
             copied = false
           }
           setCopied(copied)
-          setState((previous) => ({ ...(previous ?? {}), busy: '', note: '', result: { ...((previous ?? {}).result ?? {}), [action.label]: copied } }))
+          setState((previous) => ({ ...(previous ?? {}), busy: '', note: '' }))
           if (copied) setTimeout(() => setCopied(false), 1600)
           return
         }
@@ -331,9 +333,19 @@ window.__ModuleLoader__.load({
             body: JSON.stringify({ kind: action.kind, target: action.target, plugin: action.plugin }),
           })
           const data = await response.json()
-          setState((previous) => ({ ...(previous ?? {}), busy: '', note: '', result: { ...((previous ?? {}).result ?? {}), [action.label]: data?.ok === true } }))
+          if (COLORED_KINDS.includes(action.kind) && data?.ok === true) {
+            setState((previous) => ({ ...(previous ?? {}), busy: '', note: '', result: { ...((previous ?? {}).result ?? {}), [action.label]: true } }))
+          } else if (COLORED_KINDS.includes(action.kind)) {
+            setState((previous) => ({ ...(previous ?? {}), busy: '', note: '', result: { ...((previous ?? {}).result ?? {}), [action.label]: false } }))
+          } else {
+            setState((previous) => ({ ...(previous ?? {}), busy: '', note: '' }))
+          }
         } catch {
-          setState((previous) => ({ ...(previous ?? {}), busy: '', note: '', result: { ...((previous ?? {}).result ?? {}), [action.label]: false } }))
+          if (COLORED_KINDS.includes(action.kind)) {
+            setState((previous) => ({ ...(previous ?? {}), busy: '', note: '', result: { ...((previous ?? {}).result ?? {}), [action.label]: false } }))
+          } else {
+            setState((previous) => ({ ...(previous ?? {}), busy: '', note: '' }))
+          }
         }
       }
 
@@ -383,12 +395,12 @@ window.__ModuleLoader__.load({
                 key: action.label,
                 type: 'button',
                 className: 'dshc-action',
-                disabled: state.busy !== '',
+                disabled: state.busy !== '' || (COLORED_KINDS.includes(action.kind) && results[action.label] === true),
                 onClick: () => void run(action),
                 style:
-                  results[action.label] === true
-                    ? { background: 'rgba(47,158,68,0.45)', borderColor: 'rgba(47,158,68,0.95)' }
-                    : results[action.label] === false
+                  COLORED_KINDS.includes(action.kind) && results[action.label] === true
+                    ? { background: 'rgba(47,158,68,0.45)', borderColor: 'rgba(47,158,68,0.95)', cursor: 'default' }
+                    : COLORED_KINDS.includes(action.kind) && results[action.label] === false
                       ? { background: 'rgba(224,49,49,0.42)', borderColor: 'rgba(224,49,49,0.95)' }
                       : undefined,
               },
