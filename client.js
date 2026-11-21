@@ -302,7 +302,7 @@ window.__ModuleLoader__.load({
 
     /** Кнопки действий карточки: одинаковый вид, переключатель переноса строк. */
     function CardActions({ actions, copyText }) {
-      const [state, setState] = React.useState({ busy: '', note: '' })
+      const [state, setState] = React.useState({ busy: '', note: '', result: {} })
       const [copied, setCopied] = React.useState(false)
       const ACTIONS_PATH = '/api/dsh-cards/action'
 
@@ -318,7 +318,7 @@ window.__ModuleLoader__.load({
             copied = false
           }
           setCopied(copied)
-          setState({ busy: '', note: copied ? 'скопировано: ' + text.slice(0, 60) : 'не удалось скопировать' })
+          setState({ busy: '', note: '', result: { [action.label]: copied } })
           if (copied) setTimeout(() => setCopied(false), 1600)
           return
         }
@@ -330,9 +330,9 @@ window.__ModuleLoader__.load({
             body: JSON.stringify({ kind: action.kind, target: action.target, plugin: action.plugin }),
           })
           const data = await response.json()
-          setState({ busy: '', note: data?.ok === true ? (data.message ?? 'готово') : (data?.message ?? 'ошибка') })
-        } catch (error) {
-          setState({ busy: '', note: 'не удалось: ' + String(error?.message ?? error) })
+          setState({ busy: '', note: '', result: { [action.label]: data?.ok === true } })
+        } catch {
+          setState({ busy: '', note: '', result: { [action.label]: false } })
         }
       }
 
@@ -384,6 +384,12 @@ window.__ModuleLoader__.load({
                 className: 'dshc-action',
                 disabled: state.busy !== '',
                 onClick: () => void run(action),
+                style:
+                  state.result[action.label] === true
+                    ? { background: 'rgba(47,158,68,0.45)', borderColor: 'rgba(47,158,68,0.95)' }
+                    : state.result[action.label] === false
+                      ? { background: 'rgba(224,49,49,0.42)', borderColor: 'rgba(224,49,49,0.95)' }
+                      : undefined,
               },
               state.busy === action.label ? 'выполняю…' : action.label,
             ),
@@ -396,7 +402,7 @@ window.__ModuleLoader__.load({
                 copied ? 'Скопировано' : 'Копировать команду',
               ),
         ),
-        state.note !== '' ? h('span', { style: { fontSize: 11.5, opacity: 0.75 } }, state.note) : null,
+
       )
     }
 
