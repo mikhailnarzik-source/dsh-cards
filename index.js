@@ -84,6 +84,47 @@ function gitInDir(cwd, program, args, timeout = 180_000) {
   })
 }
 
+/** Открыть файл в найденном редакторе; запасной вариант — блокнот. */
+function openInEditor(filePath) {
+  return new Promise((resolveEditor) => {
+    const candidates = [
+      { editor: 'VS Code', command: 'code.exe' },
+      { editor: 'Cursor', command: 'cursor.exe' },
+      { editor: 'Sublime Text', command: 'subl.exe' },
+      { editor: 'Notepad++', command: 'notepad++.exe' },
+      { editor: 'Блокнот', command: 'notepad.exe' },
+    ]
+    const tryNext = (index) => {
+      if (index >= candidates.length) { resolveEditor({ ok: false, editor: '', message: 'редактор не найден' }); return }
+      execFile(candidates[index].command, [filePath], { windowsHide: false, timeout: 20_000 }, (error) => {
+        if (error === null) { resolveEditor({ ok: true, editor: candidates[index].editor }); return }
+        tryNext(index + 1)
+      })
+    }
+    tryNext(0)
+  })
+}
+
+/** Показать диалог «Сохранить как» и скопировать файл по выбранному пути. */
+function openSaveDialog(sourcePath) {
+  const escaped = sourcePath.replace(/'/g, "''")
+  const script = [
+    'Add-Type -AssemblyName System.Windows.Forms | Out-Null',
+    '$dialog = New-Object System.Windows.Forms.SaveFileDialog',
+    "$dialog.Title = 'Сохранить файл'",
+    '$dialog.FileName = Split-Path -Leaf \'' + escaped + '\'',
+    'if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {',
+    '  Copy-Item -LiteralPath \'' + escaped + '\' -Destination $dialog.FileName -Force',
+    '}',
+  ].join(String.fromCharCode(10))
+  try {
+    execFile('powershell.exe', ['-NoProfile', '-STA', '-Command', script], { windowsHide: false, timeout: 120_000 }, () => {})
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Положить текст в буфер обмена Windows. */
 function copyToClipboard(text) {
   return new Promise((resolveCopy) => {
@@ -200,6 +241,41 @@ export function apply(ctx) {
             if (text === '') return json({ ok: false, message: 'нечего копировать' })
             const copied = await copyToClipboard(text)
             return json({ ok: copied, message: copied ? 'скопировано' : 'не удалось скопировать' })
+          }
+
+          if (kind === 'download-file') {
+            const url = typeof body?.target === 'string' ? body.target.trim() : ''
+            if (!/^https?:\/\/[^\s]+$/i.test(url)) return json({ ok: false, message: 'скачивать можно только http/https' })
+            const name = typeof body?.name === 'string' && body.name !== '' ? body.name : url.split('/').pop() || 'download.bin'
+            const safeName = name.replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 80) || 'download.bin'
+            const folder = join(homedir(), 'Downloads')
+            const target = join(folder, safeName)
+            try {
+              const response = await fetch(url)
+              if (!response.ok) return json({ ok: false, message: 'сервер ответил ' + response.status })
+              const buffer = Buffer.from(await response.arrayBuffer())
+              mkdirSync(folder, { recursive: true })
+              writeFileSync(target, buffer)
+              return json({ ok: true, message: 'сохранено в Загрузки', target })
+            } catch (error) {
+              return json({ ok: false, message: 'не удалось скачать: ' + String(error?.message ?? error) })
+            }
+          }
+
+          if (kind === 'save-as') {
+            const fileToSave = insideOpenRoots(body?.target)
+            if (fileToSave === undefined) return json({ ok: false, message: 'этот файл сохранять нельзя' })
+            if (!existsSync(fileToSave)) return json({ ok: false, message: 'файл не найден: ' + fileToSave })
+            openSaveDialog(fileToSave)
+            return json({ ok: true, message: 'открыт диалог сохранения' })
+          }
+
+          if (kind === 'open-in-editor') {
+            const fileForEditor = insideOpenRoots(body?.target)
+            if (fileForEditor === undefined) return json({ ok: false, message: 'этот файл открывать нельзя' })
+            if (!existsSync(fileForEditor)) return json({ ok: false, message: 'файл не найден: ' + fileForEditor })
+            const editor = await openInEditor(fileForEditor)
+            return json({ ok: editor.ok, message: editor.ok ? 'открыто в ' + editor.editor : editor.message, target: fileForEditor })
           }
 
           if (kind === 'open-url') {
