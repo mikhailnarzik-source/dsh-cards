@@ -386,7 +386,7 @@ window.__ModuleLoader__.load({
       for (const action of actions) {
         if (action.command !== '') { copyLines.push(action.command); continue }
         if (action.kind === 'git-push') copyLines.push('git -C "' + action.target + '" push origin main')
-        if (action.kind === 'open-folder') copyLines.push('explorer "' + action.target.replace(/\//g, '\\') + '"')
+        // open-folder не добавляет текст для копирования: это действие, а не команда
         if (action.kind === 'run-tests') copyLines.push('cd "' + action.target + '" && node --test')
         if (action.kind === 'dsh-plugin-update') copyLines.push('dsh plugin --profile desktop remove ' + action.plugin + ' && dsh plugin add ' + action.target)
       }

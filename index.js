@@ -22,6 +22,27 @@ const WORKSPACES = [
   'E:/DeepSeek Harness',
 ]
 
+/** Каталоги, которые можно открыть в проводнике (только просмотр). */
+const OPEN_ROOTS = [
+  'E:/DeepSeek Harness',
+  'C:/Users/Narzik/.dsh',
+  'C:/Users/Narzik/Documents',
+  'C:/Users/Narzik/Desktop',
+  'C:/Users/Narzik/Downloads',
+]
+
+/** Путь внутри одного из разрешённых каталогов просмотра. */
+function insideOpenRoots(target) {
+  if (typeof target !== 'string' || target.trim() === '') return undefined
+  const absolute = resolve(target)
+  return OPEN_ROOTS.some((root) => {
+    const base = resolve(root)
+    return absolute === base || absolute.startsWith(base + '\\') || absolute.startsWith(base + '/')
+  })
+    ? absolute
+    : undefined
+}
+
 function json(payload, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
@@ -154,11 +175,17 @@ export function apply(ctx) {
           }
 
           if (kind === 'open-folder') {
-            if (target === undefined) return json({ ok: false, message: 'путь вне рабочей папки' })
-            if (!existsSync(target)) return json({ ok: false, message: 'каталог не найден: ' + target })
+            const openTarget = insideOpenRoots(body?.target)
+            if (openTarget === undefined) return json({ ok: false, message: 'этот путь открывать нельзя' })
+            if (!existsSync(openTarget)) return json({ ok: false, message: 'каталог не найден: ' + openTarget })
             // Проводник Windows понимает только обратные слэши.
-            const windowsPath = target.replace(/\//g, '\\')
-            execFile('explorer.exe', [windowsPath], { windowsHide: false }, () => {})
+            const windowsPath = openTarget.replace(/\//g, '\\')
+            try {
+              execFile('explorer.exe', [windowsPath], { windowsHide: false }, () => {})
+            } catch {
+              // Запасной путь: start через cmd.
+              execFile(process.env.ComSpec ?? 'cmd.exe', ['/c', 'start', '', windowsPath], { windowsHide: true }, () => {})
+            }
             return json({ ok: true, message: 'открываю: ' + windowsPath, target: windowsPath })
           }
 
