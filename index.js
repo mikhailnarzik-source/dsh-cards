@@ -86,17 +86,17 @@ function gitInDir(cwd, program, args, timeout = 180_000) {
 
 /** Известные редакторы: id → команда и человеческое имя. */
 const EDITORS = [
-  { id: 'vscode', name: 'VS Code', command: 'code.exe' },
-  { id: 'cursor', name: 'Cursor', command: 'cursor.exe' },
-  { id: 'sublime', name: 'Sublime Text', command: 'subl.exe' },
-  { id: 'notepadpp', name: 'Notepad++', command: 'notepad++.exe' },
-  { id: 'notepad', name: 'Блокнот', command: 'notepad.exe' },
+  { id: 'vscode', name: 'VS Code', command: 'code', exe: 'code.exe' },
+  { id: 'cursor', name: 'Cursor', command: 'cursor', exe: 'cursor.exe' },
+  { id: 'sublime', name: 'Sublime Text', command: 'subl', exe: 'subl.exe' },
+  { id: 'notepadpp', name: 'Notepad++', command: 'notepad++', exe: 'notepad++.exe' },
+  { id: 'notepad', name: 'Блокнот', command: 'notepad', exe: 'notepad.exe' },
 ]
 
 /** Установлен ли редактор. */
 function editorAvailable(command) {
   return new Promise((resolveAvailable) => {
-    execFile(process.env.ComSpec ?? 'cmd.exe', ['/c', 'where', command.replace(/\.exe$/i, '')], { windowsHide: true, timeout: 8000 }, (error) => {
+    execFile(process.env.ComSpec ?? 'cmd.exe', ['/c', 'where', command], { windowsHide: true, timeout: 8000 }, (error) => {
       resolveAvailable(error === null)
     })
   })
@@ -117,7 +117,7 @@ async function detectEditors() {
 /** Открыть файл в редакторе: конкретном или первом найденном. */
 function openInEditor(filePath, requested) {
   return new Promise((resolveEditor) => {
-    let candidates = EDITORS.map((editor) => ({ editor: editor.name, command: editor.command, id: editor.id }))
+    let candidates = EDITORS.map((editor) => ({ ...editor }))
     if (typeof requested === 'string' && requested !== '' && requested !== 'auto') {
       const wanted = candidates.filter((editor) => editor.id === requested)
       if (wanted.length === 0) {
@@ -126,16 +126,28 @@ function openInEditor(filePath, requested) {
       }
       candidates = wanted
     }
+
+    /** Запуск через cmd: работает и для .exe, и для .cmd-обёрток. */
+    const launch = (editor, done) => {
+      const viaCmd = () => {
+        execFile(process.env.ComSpec ?? 'cmd.exe', ['/c', editor.command, filePath], { windowsHide: true, timeout: 25_000 }, (error) => {
+          if (error === null) { done(true); return }
+          const viaExe = () => {
+            execFile(editor.exe, [filePath], { windowsHide: false, timeout: 25_000 }, (exeError) => done(exeError === null))
+          }
+          viaExe()
+        })
+      }
+      viaCmd()
+    }
+
     const tryNext = (index) => {
       if (index >= candidates.length) {
-        resolveEditor({ ok: false, editor: '', message: 'редактор не найден' })
+        resolveEditor({ ok: false, editor: '', message: 'не удалось открыть: редакторы не отвечают' })
         return
       }
-      execFile(candidates[index].command, [filePath], { windowsHide: false, timeout: 20_000 }, (error) => {
-        if (error === null) {
-          resolveEditor({ ok: true, editor: candidates[index].editor })
-          return
-        }
+      launch(candidates[index], (ok) => {
+        if (ok) { resolveEditor({ ok: true, editor: candidates[index].name }); return }
         tryNext(index + 1)
       })
     }

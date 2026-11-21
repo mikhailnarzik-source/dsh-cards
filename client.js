@@ -378,12 +378,6 @@ window.__ModuleLoader__.load({
               setState((previous) => ({ ...(previous ?? {}), busy: '', note: '', error: 'редакторы не найдены' }))
               return
             }
-            if (editors.length === 1) {
-              const only = editors[0]
-              const opened = await sendAction({ ...action, editor: only.id })
-              setState((previous) => ({ ...(previous ?? {}), busy: '', note: '', editor: null, result: { ...((previous ?? {}).result ?? {}), [action.label]: opened } }))
-              return
-            }
             setState((previous) => ({ ...(previous ?? {}), busy: '', note: '', editor: { action, editors } }))
             return
           } catch {
