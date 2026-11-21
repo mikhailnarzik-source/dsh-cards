@@ -315,6 +315,8 @@ window.__ModuleLoader__.load({
       '.dshc-menu-item:hover { background: rgba(128,128,128,0.18); }',
       '.dshc-menu-item:active { background: rgba(128,128,128,0.26); }',
       '.dshc-menu-sep { height: 1px; margin: 3px 6px; background: rgba(128,128,128,0.28); }',
+      '.dshc-corner { position: absolute; right: 0; bottom: 0; display: inline-flex; align-items: center; gap: 3px; height: 24px; padding: 0 5px; border-radius: 6px; border: 1px solid rgba(128,128,128,0.35); background: rgba(128,128,128,0.14); color: inherit; cursor: pointer; }',
+      '.dshc-corner:hover { background: rgba(128,128,128,0.24); }',
     ].join('\n')
 
     /** Отправить действие в host и вернуть признак успеха. */
@@ -347,7 +349,7 @@ window.__ModuleLoader__.load({
 
     /** Кнопки действий карточки: одинаковый вид, переключатель переноса строк. */
     function CardActions({ actions, copyText }) {
-      const [state, setState] = React.useState({ busy: '', note: '', result: {}, error: '', editor: null })
+      const [state, setState] = React.useState({ busy: '', note: '', result: {}, error: '', editor: null, appsData: null })
       const [lastEditor, setLastEditor] = React.useState(null)
       const results = state.result ?? {}
       const [copied, setCopied] = React.useState(false)
@@ -375,13 +377,9 @@ window.__ModuleLoader__.load({
         return () => { cancelled = true }
       }, [])
 
-      /** Открыть меню выбора приложения для файла. */
-      const openEditorMenu = async (action) => {
-        if (state.editor !== null && state.editor !== undefined && state.editor.action?.label === action.label) {
-          setState((previous) => ({ ...(previous ?? {}), editor: null }))
-          return
-        }
-        setState((previous) => ({ ...(previous ?? {}), busy: action.label }))
+      /** Загрузить системный список приложений для файла. */
+      const loadApps = async (action) => {
+        if (state.appsData !== null) return state.appsData
         try {
           const response = await fetch(ACTIONS_PATH, {
             method: 'POST',
@@ -390,15 +388,31 @@ window.__ModuleLoader__.load({
             body: JSON.stringify({ kind: 'list-editors', target: action.target }),
           })
           const data = await response.json()
-          const editors = Array.isArray(data?.editors) ? data.editors : []
-          if (editors.length === 0) {
-            setState((previous) => ({ ...(previous ?? {}), busy: '', error: 'приложения не найдены' }))
-            return
+          const value = {
+            defaultApp: data?.defaultApp ?? null,
+            editors: Array.isArray(data?.editors) ? data.editors : [],
+            apps: Array.isArray(data?.apps) ? data.apps : [],
           }
-          setState((previous) => ({ ...(previous ?? {}), busy: '', editor: { action, editors, defaultApp: data?.defaultApp ?? null } }))
+          setState((previous) => ({ ...(previous ?? {}), appsData: value }))
+          return value
         } catch {
-          setState((previous) => ({ ...(previous ?? {}), busy: '', error: 'список приложений недоступен' }))
+          return null
         }
+      }
+
+      /** Открыть меню выбора приложения для файла. */
+      const openEditorMenu = async (action) => {
+        if (state.editor !== null && state.editor !== undefined && state.editor.action?.label === action.label) {
+          setState((previous) => ({ ...(previous ?? {}), editor: null }))
+          return
+        }
+        setState((previous) => ({ ...(previous ?? {}), busy: action.label }))
+        const data = await loadApps(action)
+        if (data === null) {
+          setState((previous) => ({ ...(previous ?? {}), busy: '', error: 'список приложений недоступен' }))
+          return
+        }
+        setState((previous) => ({ ...(previous ?? {}), busy: '', editor: { action, ...data } }))
       }
 
       const run = async (action) => {
@@ -475,7 +489,7 @@ window.__ModuleLoader__.load({
 
       return h(
         'div',
-        { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+        { style: { position: 'relative', display: 'flex', flexDirection: 'column', gap: 6 } },
         h('style', null, ACTION_STYLES),
         h(
           'div',
@@ -487,39 +501,35 @@ window.__ModuleLoader__.load({
               maxWidth: '100%',
               minWidth: 0,
               boxSizing: 'border-box',
-              overflow: 'hidden',
+              overflow: 'visible',
+              paddingRight: 36,
             },
           },
-          ...actions.map((action) => {
-            const isMenu = action.kind === 'open-in-editor'
-            const isPrimary = action.kind === 'open-file' && actions.some((item) => item.kind === 'open-in-editor')
-            const colored = COLORED_KINDS.includes(action.kind)
-            const stateColor = colored && results[action.label] === true
-              ? { background: 'rgba(47,158,68,0.45)', borderColor: 'rgba(47,158,68,0.95)', cursor: 'default' }
-              : colored && results[action.label] === false
-                ? { background: 'rgba(224,49,49,0.42)', borderColor: 'rgba(224,49,49,0.95)' }
-                : undefined
-            const label = state.busy === action.label
-              ? 'выполняю…'
-              : colored && results[action.label] === true
-                ? action.label + ' снова'
-                : isMenu
-                  ? (state.editor?.action?.label === action.label ? '▴' : '▾')
-                  : action.label
-            return h(
-              'button',
-              {
-                key: action.label,
-                type: 'button',
-                className: isMenu ? 'dshc-action dshc-chevron' : isPrimary ? 'dshc-action dshc-split-main' : 'dshc-action',
-                disabled: state.busy !== '' && !isMenu,
-                title: isMenu ? 'Открыть с помощью другого приложения' : action.label,
-                onClick: () => (isMenu ? void openEditorMenu(action) : void run(action)),
-                style: stateColor,
-              },
-              label,
-            )
-          }),
+          ...actions
+            .filter((action) => action.kind !== 'open-in-editor')
+            .map((action) => {
+              const colored = COLORED_KINDS.includes(action.kind)
+              return h(
+                'button',
+                {
+                  key: action.label,
+                  type: 'button',
+                  className: 'dshc-action',
+                  disabled: state.busy !== '',
+                  onClick: () => void run(action),
+                  style: colored && results[action.label] === true
+                    ? { background: 'rgba(47,158,68,0.45)', borderColor: 'rgba(47,158,68,0.95)', cursor: 'default' }
+                    : colored && results[action.label] === false
+                      ? { background: 'rgba(224,49,49,0.42)', borderColor: 'rgba(224,49,49,0.95)' }
+                      : undefined,
+                },
+                state.busy === action.label
+                  ? 'выполняю…'
+                  : colored && results[action.label] === true
+                    ? action.label + ' снова'
+                    : action.label,
+              )
+            }),
           copyText === '' || actions.some((item) => item.kind === 'copy')
             ? null
             : h(
@@ -527,10 +537,31 @@ window.__ModuleLoader__.load({
                 { type: 'button', className: 'dshc-action', onClick: () => void copy() },
                 copied ? 'Скопировано' : 'Копировать команду',
               ),
+        actions.some((action) => action.kind === 'open-in-editor')
+          ? h(
+              'button',
+              {
+                type: 'button',
+                title: 'Открыть с помощью…',
+                className: 'dshc-corner',
+                onClick: () => {
+                  const action = actions.find((item) => item.kind === 'open-in-editor')
+                  if (action !== undefined) void openEditorMenu(action)
+                },
+              },
+              state.appsData?.defaultApp?.icon
+                ? h('img', { src: state.appsData.defaultApp.icon, width: 16, height: 16, alt: '', style: { width: 16, height: 16, borderRadius: 3 } })
+                : h('span', { style: { fontSize: 13 } }, '📄'),
+              h('span', { style: { fontSize: 9, opacity: 0.75, lineHeight: 1 } }, '▾'),
+            )
+          : null,
         state.editor !== null && state.editor !== undefined
           ? h(
               'div',
-              { className: 'dshc-menu' },
+              {
+                className: 'dshc-menu',
+                style: { position: 'absolute', right: 0, bottom: 30, width: 300, maxHeight: 360, overflowY: 'auto', marginTop: 0, zIndex: 60 },
+              },
               state.editor.defaultApp !== null && state.editor.defaultApp !== undefined
                 ? h(
                     'button',
@@ -542,7 +573,7 @@ window.__ModuleLoader__.load({
                         setState((previous) => ({ ...(previous ?? {}), editor: null, error: opened ? '' : 'не удалось открыть файл' }))
                       },
                     },
-                    typeof state.editor.defaultApp.icon === 'string' && state.editor.defaultApp.icon !== ''
+                    state.editor.defaultApp.icon
                       ? h('img', { src: state.editor.defaultApp.icon, width: 18, height: 18, alt: '', style: { width: 18, height: 18, borderRadius: 3 } })
                       : h('span', { style: { width: 18 } }),
                     h('span', null, state.editor.defaultApp.name + ' (по умолчанию)'),
@@ -552,23 +583,36 @@ window.__ModuleLoader__.load({
                 h(
                   'button',
                   {
-                    key: editor.id,
+                    key: 'editor-' + editor.id,
                     type: 'button',
                     className: 'dshc-menu-item',
                     onClick: async () => {
                       const opened = await sendAction({ ...state.editor.action, editor: editor.id })
-                      setState((previous) => ({
-                        ...(previous ?? {}),
-                        editor: null,
-                        result: { ...((previous ?? {}).result ?? {}), [state.editor.action.label]: opened },
-                        error: opened ? '' : 'не удалось открыть в ' + editor.name,
-                      }))
+                      setState((previous) => ({ ...(previous ?? {}), editor: null, result: { ...((previous ?? {}).result ?? {}), [state.editor.action.label]: opened }, error: opened ? '' : 'не удалось открыть в ' + editor.name }))
                     },
                   },
-                  typeof editor.icon === 'string' && editor.icon !== ''
+                  editor.icon
                     ? h('img', { src: editor.icon, width: 18, height: 18, alt: '', style: { width: 18, height: 18, borderRadius: 3 } })
                     : h('span', { style: { width: 18 } }),
                   h('span', null, editor.name),
+                ),
+              ),
+              ...(state.editor.apps ?? []).map((app) =>
+                h(
+                  'button',
+                  {
+                    key: 'app-' + app.path,
+                    type: 'button',
+                    className: 'dshc-menu-item',
+                    onClick: async () => {
+                      const opened = await sendAction({ kind: 'open-with', target: state.editor.action.target, app: app.path })
+                      setState((previous) => ({ ...(previous ?? {}), editor: null, error: opened ? '' : 'не удалось открыть в ' + app.name }))
+                    },
+                  },
+                  app.icon
+                    ? h('img', { src: app.icon, width: 18, height: 18, alt: '', style: { width: 18, height: 18, borderRadius: 3 } })
+                    : h('span', { style: { width: 18 } }),
+                  h('span', null, app.name),
                 ),
               ),
               h('div', { className: 'dshc-menu-sep' }),

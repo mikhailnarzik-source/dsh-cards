@@ -1,6 +1,6 @@
 {
   "name": "dsh-cards",
-  "version": "1.7.1",
+  "version": "1.7.3",
   "description": "Карточки в ответах ассистента: блок ```dsh-card с заголовком, строками и списком превращается в аккуратную карточку",
   "type": "module",
   "license": "MIT",
@@ -28,7 +28,8 @@
     "icon.svg",
     "README.md",
     "LICENSE",
-    "test"
+    "test",
+    "apps.ps1"
   ],
   "engines": {
     "node": ">=22.15"

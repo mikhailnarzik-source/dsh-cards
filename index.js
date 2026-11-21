@@ -9,6 +9,7 @@
  * рабочей папки проекта. Произвольные команды запрещены.
  */
 import { execFile, spawn } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, extname, join, resolve } from 'node:path'
@@ -328,6 +329,39 @@ function defaultCommandFor(extension) {
       resolveCommand(error === null ? String(stdout ?? '').trim() : '')
     })
   })
+}
+
+/** Все приложения из системного списка «Открыть с помощью». */
+async function appsForFile(filePath) {
+  try {
+    const extension = extname(filePath)
+    if (extension === '') return []
+    const scriptPath = join(dirname(fileURLToPath(import.meta.url)), 'apps.ps1')
+    if (!existsSync(scriptPath)) return []
+    const raw = await new Promise((resolveApps) => {
+      execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, '-Extension', extension], { windowsHide: true, timeout: 30000 }, (error, stdout) => {
+        resolveApps(error === null ? String(stdout ?? '') : '')
+      })
+    })
+    const text = raw.trim()
+    if (text === '') return []
+    const parsed = JSON.parse(text)
+    const items = Array.isArray(parsed) ? parsed : [parsed]
+    const apps = []
+    for (const item of items) {
+      if (item === null || typeof item !== 'object' || typeof item.path !== 'string') continue
+      const exePath = item.path
+      if (!existsSync(exePath)) continue
+      const base = (exePath.split(/[\\/]/).pop() ?? '').replace(/\.exe$/i, '').toLowerCase()
+      let name = typeof item.name === 'string' ? item.name.replace(/\.exe$/i, '').trim() : ''
+      if (name === '' || name.toLowerCase() === base) name = APP_NAMES[base] ?? base
+      const icon = await editorIcon(exePath)
+      apps.push({ path: exePath, name, icon })
+    }
+    return apps
+  } catch {
+    return []
+  }
 }
 
 /** Иконка программы, связанной с файлом (или самого файла). */
@@ -653,7 +687,25 @@ export function apply(ctx) {
             const last = editors.find((editor) => editor.id === lastEditorId) ?? null
             const target = typeof body?.target === 'string' ? insideOpenRoots(body.target) : undefined
             const defaultApp = target === undefined ? null : await defaultAppFor(target)
-            return json({ ok: true, editors, last, defaultApp })
+            const apps = target === undefined ? [] : await appsForFile(target)
+            return json({ ok: true, editors, last, defaultApp, apps })
+          }
+
+          if (kind === 'open-with') {
+            const filePath = insideOpenRoots(body?.target)
+            if (filePath === undefined) return json({ ok: false, message: 'этот файл открывать нельзя' })
+            if (!existsSync(filePath)) return json({ ok: false, message: 'файл не найден: ' + filePath })
+            const appPath = typeof body?.app === 'string' ? body.app : ''
+            if (!appPath.toLowerCase().endsWith('.exe') || !existsSync(appPath)) {
+              return json({ ok: false, message: 'программа не найдена' })
+            }
+            try {
+              const child = spawn(appPath, [filePath], { detached: true, stdio: 'ignore' })
+              child.unref()
+              return json({ ok: true, message: 'открыто' })
+            } catch {
+              return json({ ok: false, message: 'не удалось запустить программу' })
+            }
           }
 
           if (kind === 'pick-editor') {
