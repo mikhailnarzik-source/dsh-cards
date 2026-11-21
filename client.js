@@ -764,11 +764,33 @@ function CardsCard() {
       )
     }
 
+    /** Компактная строка плагина в списке. */
+    function CompactItem() {
+      const t = (key) => translate(key)
+      return h(
+        'div',
+        { style: { display: 'flex', flexDirection: 'column', gap: 3 } },
+        h('span', { style: { fontSize: 13, fontWeight: 600 } }, t('heading')),
+        h('span', { style: { fontSize: 12, opacity: 0.65, lineHeight: 1.45 } }, t('hint')),
+      )
+    }
+
+    /** Большой предпросмотр с редактором — только на странице своего плагина. */
+    function DetailSection(props) {
+      const subject = props?.subject
+      const subjectId = typeof subject?.id === 'string' ? subject.id : ''
+      const subjectName = typeof subject?.name === 'string' ? subject.name : ''
+      const isOurs = subjectId === 'dsh-cards' || subjectName.toLowerCase().includes('dsh-cards')
+      if (!isOurs) return null
+      return h(CardsCard)
+    }
+
     function apply(ctx) {
       ctx.locale.register(NS, { en, ru })
       translate = ctx.locale.bind(NS)
 
       try {
+        // В списке плагинов — только компактная строка, без большого предпросмотра.
         ctx.slots.inject('plugins.item', () =>
           ctx.slots.register(
             {
@@ -778,7 +800,20 @@ function CardsCard() {
               label: () => translate('title'),
               locale: NS,
             },
-            () => h(CardFrame, null, h(CardsCard)),
+            () => h(CompactItem),
+          ),
+        )
+
+        // Подробный предпросмотр — только на странице своего плагина.
+        ctx.slots.inject('plugins.detail.section', () =>
+          ctx.slots.register(
+            {
+              name: 'plugins.detail.section',
+              id: 'dsh-cards-detail',
+              order: 57,
+              locale: NS,
+            },
+            DetailSection,
           ),
         )
       } catch (error) {
