@@ -352,7 +352,7 @@ window.__ModuleLoader__.load({
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ kind: action.kind, target: action.target, plugin: action.plugin, name: action.name }),
+            body: JSON.stringify({ kind: action.kind, target: action.target, plugin: action.plugin, name: action.name, editor: action.editor }),
           })
           const data = await response.json()
           if (COLORED_KINDS.includes(action.kind) && data?.ok !== true) {
@@ -483,7 +483,16 @@ window.__ModuleLoader__.load({
         const name = baseName(raw.file)
         actions.push({ label: 'Открыть файл', kind: 'open-file', target: raw.file })
         actions.push({ label: 'Сохранить как…', kind: 'save-as', target: raw.file })
-        actions.push({ label: 'Открыть в редакторе', kind: 'open-in-editor', target: raw.file })
+        const editorNames = { vscode: 'VS Code', cursor: 'Cursor', sublime: 'Sublime Text', notepadpp: 'Notepad++', notepad: 'Блокнот' }
+        const wantedEditor = typeof raw.editor === 'string' ? raw.editor : ''
+        actions.push({
+          label: wantedEditor !== '' && wantedEditor !== 'auto'
+            ? 'Открыть в ' + (editorNames[wantedEditor] ?? wantedEditor)
+            : 'Открыть в редакторе',
+          kind: 'open-in-editor',
+          target: raw.file,
+          editor: wantedEditor === 'auto' ? '' : wantedEditor,
+        })
       }
       if (typeof raw.url === 'string' && raw.url !== '') {
         let host = raw.url
@@ -502,6 +511,7 @@ window.__ModuleLoader__.load({
             target: typeof item.target === 'string' ? item.target : '',
             plugin: typeof item.plugin === 'string' ? item.plugin : '',
             name: typeof item.name === 'string' ? item.name : '',
+            editor: typeof item.editor === 'string' ? item.editor : '',
             command: typeof item.command === 'string' ? item.command : '',
           })
         }
