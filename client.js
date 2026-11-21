@@ -178,7 +178,7 @@ window.__ModuleLoader__.load({
     }
 
     /** Сама карточка: используется и в предпросмотре, и в ответе ассистента. */
-    function CardView({ card }) {
+    function CardView({ card, actions }) {
       return h(
         'div',
         {
@@ -225,17 +225,90 @@ window.__ModuleLoader__.load({
             )
           : null,
         card.note !== '' ? h('span', { style: { fontSize: 12, opacity: 0.7 } }, card.note) : null,
-      )
+        Array.isArray(actions) && actions.length > 0 ? h(CardActions, { actions }) : null,
+)
     }
 
     /** Рендерер блока кода ```dsh-card. */
+    /** Кнопки действий карточки: запускают понятную host-часть. */
+    function CardActions({ actions }) {
+      const [state, setState] = React.useState({ busy: '', note: '' })
+      const ACTIONS_PATH = '/api/dsh-cards/action'
+
+      const run = async (action) => {
+        setState({ busy: action.label, note: '' })
+        try {
+          const response = await fetch(ACTIONS_PATH, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ kind: action.kind, target: action.target }),
+          })
+          const data = await response.json()
+          setState({ busy: '', note: data?.ok === true ? (data.message ?? 'готово') : (data?.message ?? 'ошибка') })
+        } catch (error) {
+          setState({ busy: '', note: 'не удалось: ' + String(error?.message ?? error) })
+        }
+      }
+
+      return h(
+        'div',
+        { style: { display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10 } },
+        h(
+          'div',
+          { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
+          ...actions.map((action) =>
+            h(
+              'button',
+              {
+                key: action.label,
+                type: 'button',
+                className: 'dshc-action',
+                disabled: state.busy !== '',
+                onClick: () => void run(action),
+                style: {
+                  padding: '5px 12px',
+                  borderRadius: 8,
+                  border: '1px solid rgba(128,128,128,0.35)',
+                  background: action.kind === 'git-push' ? 'rgba(106,139,208,0.2)' : 'rgba(128,128,128,0.1)',
+                  color: 'inherit',
+                  font: 'inherit',
+                  fontSize: 12,
+                  cursor: state.busy === '' ? 'pointer' : 'progress',
+                },
+              },
+              state.busy === action.label ? 'выполняю…' : action.label,
+            ),
+          ),
+        ),
+        state.note !== '' ? h('span', { style: { fontSize: 11.5, opacity: 0.75 } }, state.note) : null,
+      )
+    }
+
     function FenceCard(props) {
       const language = props?.language ?? props?.lang ?? props?.info ?? ''
       if (String(language).trim() !== LANGUAGE) return null
       const content = props?.content ?? props?.code ?? props?.text ?? props?.value ?? ''
       const parsed = parseCard(String(content))
       if (!parsed.ok) return null
-      return h(CardView, { card: parsed.card })
+      // Действия карточки: только известные виды, выполняет host-часть.
+      let actions = []
+      try {
+        const raw = JSON.parse(String(content))
+        if (Array.isArray(raw?.actions)) {
+          actions = raw.actions
+            .filter((item) => item !== null && typeof item === 'object' && typeof item.label === 'string')
+            .slice(0, 4)
+            .map((item) => ({
+              label: item.label,
+              kind: typeof item.kind === 'string' ? item.kind : '',
+              target: typeof item.target === 'string' ? item.target : '',
+            }))
+        }
+      } catch {
+        actions = []
+      }
+      return h(CardView, { card: parsed.card, actions })
     }
 
     const EXAMPLE = JSON.stringify(
