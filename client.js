@@ -241,7 +241,12 @@ window.__ModuleLoader__.load({
       '  margin-top: 12px;',
       '}',
       '.dshc-action {',
-      '  flex: 0 0 auto;',
+      '  flex: 0 1 auto;',
+      '  min-width: 0;',
+      '  max-width: 100%;',
+      '  white-space: nowrap;',
+      '  overflow: hidden;',
+      '  text-overflow: ellipsis;',
       '  display: inline-flex;',
       '  align-items: center;',
       '  justify-content: center;',
@@ -309,7 +314,19 @@ window.__ModuleLoader__.load({
         h('style', null, ACTION_STYLES),
         h(
           'div',
-          { className: 'dshc-actions', style: { flexWrap: wrap ? 'wrap' : 'nowrap' } },
+          {
+            className: 'dshc-actions',
+            style: {
+              flexWrap: wrap ? 'wrap' : 'nowrap',
+              width: '100%',
+              maxWidth: '100%',
+              minWidth: 0,
+              boxSizing: 'border-box',
+              overflowX: wrap ? 'hidden' : 'auto',
+              overflowY: 'hidden',
+              paddingBottom: wrap ? 0 : 2,
+            },
+          },
           ...actions.map((action) =>
             h(
               'button',
