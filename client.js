@@ -311,7 +311,15 @@ window.__ModuleLoader__.load({
         if (action.kind === 'copy') {
           const text = action.command !== '' ? action.command : copyText
           if (text === '') { setState({ busy: '', note: 'нечего копировать' }); return }
-          await copyTextToHost(text)
+          let copied = false
+          try {
+            copied = await copyTextToHost(text)
+          } catch {
+            copied = false
+          }
+          setCopied(copied)
+          setState({ busy: '', note: copied ? 'скопировано: ' + text.slice(0, 60) : 'не удалось скопировать' })
+          if (copied) setTimeout(() => setCopied(false), 1600)
           return
         }
         try {
@@ -380,11 +388,13 @@ window.__ModuleLoader__.load({
               state.busy === action.label ? 'выполняю…' : action.label,
             ),
           ),
-          h(
-            'button',
-            { type: 'button', className: 'dshc-action', onClick: () => void copy() },
-            copied ? 'Скопировано' : 'Копировать команду',
-          ),
+          actions.some((item) => item.kind === 'copy')
+            ? null
+            : h(
+                'button',
+                { type: 'button', className: 'dshc-action', onClick: () => void copy() },
+                copied ? 'Скопировано' : 'Копировать команду',
+              ),
         ),
         state.note !== '' ? h('span', { style: { fontSize: 11.5, opacity: 0.75 } }, state.note) : null,
       )
