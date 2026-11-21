@@ -487,6 +487,23 @@ export function apply(ctx) {
             return json({ ok: true, message: 'открыт диалог сохранения' })
           }
 
+          if (kind === 'list-editors') {
+            const editors = await detectEditors()
+            const last = editors.find((editor) => editor.id === lastEditorId) ?? null
+            return json({ ok: true, editors, last })
+          }
+
+          if (kind === 'pick-editor') {
+            const chosen = await chooseExecutable()
+            if (chosen === '') return json({ ok: false, message: 'программа не выбрана' })
+            const parts = String(chosen).split(/[\\/]/)
+            const name = (parts[parts.length - 1] ?? 'Программа').replace(/\.exe$/i, '')
+            const id = 'custom-' + scannedEditors.length
+            scannedEditors.push({ id, name, command: chosen, exe: chosen, paths: [chosen], path: chosen })
+            lastEditorId = id
+            return json({ ok: true, editor: { id, name }, target: chosen })
+          }
+
           if (kind === 'open-in-editor') {
             const fileForEditor = insideOpenRoots(body?.target)
             if (fileForEditor === undefined) return json({ ok: false, message: 'этот файл открывать нельзя' })
