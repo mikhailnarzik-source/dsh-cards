@@ -326,6 +326,18 @@ function openSaveDialog(sourcePath) {
   }
 }
 
+/** Есть ли в Windows ассоциация для расширения файла. */
+function hasFileAssociation(filePath) {
+  return new Promise((resolveAssoc) => {
+    const match = /\.([A-Za-z0-9]+)$/.exec(filePath)
+    if (match === null) { resolveAssoc(false); return }
+    execFile(process.env.ComSpec ?? 'cmd.exe', ['/c', 'assoc', '.' + match[1]], { windowsHide: true, timeout: 8000 }, (error, stdout) => {
+      const text = String(stdout ?? '').trim()
+      resolveAssoc(error === null && text !== '' && !text.includes('not found') && !text.includes('не найден'))
+    })
+  })
+}
+
 /** Открыть файл или ссылку программой по умолчанию. */
 function startProcess(target) {
   try {
@@ -531,12 +543,16 @@ export function apply(ctx) {
             if (filePath === undefined) return json({ ok: false, message: 'этот путь открывать нельзя' })
             if (!existsSync(filePath)) return json({ ok: false, message: 'файл не найден: ' + filePath })
             const windowsPath = filePath.replaceAll(String.fromCharCode(92), '/').replaceAll('/', String.fromCharCode(92))
-            try {
+            // Если у расширения нет ассоциации, Windows молча ничего не делает —
+            // тогда открываем в редакторе.
+            const associated = await hasFileAssociation(windowsPath)
+            if (associated) {
               startProcess(windowsPath)
               return json({ ok: true, message: 'открываю файл', target: windowsPath })
-            } catch {
-              return json({ ok: false, message: 'не удалось открыть файл' })
             }
+            const editor = await openInEditor(filePath, lastEditorId)
+            if (editor.ok) return json({ ok: true, message: 'нет ассоциации, открыто в ' + editor.editor, target: filePath })
+            return json({ ok: false, message: 'нет программы для этого типа файла: выберите редактор в карточке' })
           }
 
           if (kind === 'open-folder') {
