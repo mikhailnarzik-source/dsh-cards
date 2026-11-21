@@ -456,6 +456,12 @@ window.__ModuleLoader__.load({
       if (typeof raw.folder === 'string' && raw.folder !== '') {
         actions.push({ label: 'Открыть в папке', kind: 'open-folder', target: raw.folder })
       }
+      if (typeof raw.file === 'string' && raw.file !== '') {
+        actions.push({ label: 'Открыть файл', kind: 'open-file', target: raw.file })
+      }
+      if (typeof raw.url === 'string' && raw.url !== '') {
+        actions.push({ label: 'Открыть ссылку', kind: 'open-url', target: raw.url })
+      }
       for (const item of Array.isArray(raw.actions) ? raw.actions : []) {
         if (item !== null && typeof item === 'object' && typeof item.label === 'string') {
           actions.push({

@@ -201,6 +201,30 @@ export function apply(ctx) {
             return json({ ok: copied, message: copied ? 'скопировано' : 'не удалось скопировать' })
           }
 
+          if (kind === 'open-url') {
+            // Ссылки открываем только http/https: никаких file:// и shell-команд.
+            const url = typeof body?.target === 'string' ? body.target.trim() : ''
+            if (!/^https?:\/\/[^\s]+$/i.test(url)) return json({ ok: false, message: 'ссылка должна начинаться с http:// или https://' })
+            try {
+              execFile(process.env.ComSpec ?? 'cmd.exe', ['/c', 'start', '', url], { windowsHide: true }, () => {})
+            } catch {
+              return json({ ok: false, message: 'не удалось открыть ссылку' })
+            }
+            return json({ ok: true, message: 'открываю ссылку', target: url })
+          }
+
+          if (kind === 'open-file') {
+            const filePath = insideOpenRoots(body?.target)
+            if (filePath === undefined) return json({ ok: false, message: 'этот путь открывать нельзя' })
+            if (!existsSync(filePath)) return json({ ok: false, message: 'файл не найден: ' + filePath })
+            try {
+              execFile(process.env.ComSpec ?? 'cmd.exe', ['/c', 'start', '', filePath.replace(/\//g, '\\')], { windowsHide: true }, () => {})
+            } catch {
+              return json({ ok: false, message: 'не удалось открыть файл' })
+            }
+            return json({ ok: true, message: 'открываю файл', target: filePath })
+          }
+
           if (kind === 'open-folder') {
             const openTarget = insideOpenRoots(body?.target)
             if (openTarget === undefined) return json({ ok: false, message: 'этот путь открывать нельзя' })
