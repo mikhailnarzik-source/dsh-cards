@@ -269,7 +269,6 @@ window.__ModuleLoader__.load({
     /** Кнопки действий карточки: одинаковый вид, переключатель переноса строк. */
     function CardActions({ actions, copyText }) {
       const [state, setState] = React.useState({ busy: '', note: '' })
-      const [wrap, setWrap] = React.useState(true)
       const [copied, setCopied] = React.useState(false)
       const ACTIONS_PATH = '/api/dsh-cards/action'
 
@@ -313,14 +312,12 @@ window.__ModuleLoader__.load({
           {
             className: 'dshc-actions',
             style: {
-              flexWrap: wrap ? 'wrap' : 'nowrap',
+              flexWrap: 'wrap',
               width: '100%',
               maxWidth: '100%',
               minWidth: 0,
               boxSizing: 'border-box',
-              overflowX: wrap ? 'hidden' : 'auto',
-              overflowY: 'hidden',
-              paddingBottom: wrap ? 0 : 2,
+              overflow: 'hidden',
             },
           },
           ...actions.map((action) =>
@@ -340,21 +337,6 @@ window.__ModuleLoader__.load({
             'button',
             { type: 'button', className: 'dshc-action', onClick: copy },
             copied ? 'Скопировано' : 'Копировать команду',
-          ),
-          h(
-            'button',
-            {
-              type: 'button',
-              className: 'dshc-action',
-              onClick: () => setWrap(!wrap),
-              title: wrap ? 'Строки переносятся по ширине карточки' : 'Все кнопки в один ряд',
-              'aria-pressed': wrap ? 'true' : 'false',
-              style: {
-                background: wrap ? 'rgba(106,139,208,0.5)' : 'rgba(106,139,208,0.28)',
-                borderColor: wrap ? 'rgba(106,139,208,0.95)' : 'rgba(106,139,208,0.55)',
-              },
-            },
-            wrap ? 'Переносить строки' : 'Не переносить строки',
           ),
         ),
         state.note !== '' ? h('span', { style: { fontSize: 11.5, opacity: 0.75 } }, state.note) : null,
