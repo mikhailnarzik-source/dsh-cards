@@ -310,6 +310,22 @@ window.__ModuleLoader__.load({
       '.dshc-action:disabled { opacity: .6; cursor: progress; }',
     ].join('\n')
 
+    /** Отправить действие в host и вернуть признак успеха. */
+    async function sendAction(action) {
+      try {
+        const response = await fetch('/api/dsh-cards/action', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ kind: action.kind, target: action.target, plugin: action.plugin, name: action.name, editor: action.editor }),
+        })
+        const data = await response.json()
+        return data?.ok === true
+      } catch {
+        return false
+      }
+    }
+
     /** Скопировать текст в системный буфер через host. */
     async function copyTextToHost(text) {
       const response = await fetch('/api/dsh-cards/action', {
@@ -324,7 +340,7 @@ window.__ModuleLoader__.load({
 
     /** Кнопки действий карточки: одинаковый вид, переключатель переноса строк. */
     function CardActions({ actions, copyText }) {
-      const [state, setState] = React.useState({ busy: '', note: '', result: {}, error: '' })
+      const [state, setState] = React.useState({ busy: '', note: '', result: {}, error: '', editor: null })
       const results = state.result ?? {}
       const [copied, setCopied] = React.useState(false)
       const ACTIONS_PATH = '/api/dsh-cards/action'
@@ -346,6 +362,33 @@ window.__ModuleLoader__.load({
           setState((previous) => ({ ...(previous ?? {}), busy: '', note: '' }))
           if (copied) setTimeout(() => setCopied(false), 1600)
           return
+        }
+        // «Открыть в редакторе» без явного выбора: показываем список найденных.
+        if (action.kind === 'open-in-editor' && (action.editor === undefined || action.editor === '')) {
+          try {
+            const response = await fetch(ACTIONS_PATH, {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ kind: 'list-editors' }),
+            })
+            const data = await response.json()
+            const editors = Array.isArray(data?.editors) ? data.editors : []
+            if (editors.length === 0) {
+              setState((previous) => ({ ...(previous ?? {}), busy: '', note: '', error: 'редакторы не найдены' }))
+              return
+            }
+            if (editors.length === 1) {
+              const only = editors[0]
+              const opened = await sendAction({ ...action, editor: only.id })
+              setState((previous) => ({ ...(previous ?? {}), busy: '', note: '', editor: null, result: { ...((previous ?? {}).result ?? {}), [action.label]: opened } }))
+              return
+            }
+            setState((previous) => ({ ...(previous ?? {}), busy: '', note: '', editor: { action, editors } }))
+            return
+          } catch {
+            // ниже обычная попытка открыть
+          }
         }
         try {
           const response = await fetch(ACTIONS_PATH, {
@@ -445,6 +488,40 @@ window.__ModuleLoader__.load({
                 { type: 'button', className: 'dshc-action', onClick: () => void copy() },
                 copied ? 'Скопировано' : 'Копировать команду',
               ),
+        state.editor !== null && state.editor !== undefined
+          ? h(
+              'div',
+              { style: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 4 } },
+              h('span', { style: { fontSize: 12, opacity: 0.75 } }, 'Открыть в:'),
+              ...(state.editor.editors ?? []).map((editor) =>
+                h(
+                  'button',
+                  {
+                    key: editor.id,
+                    type: 'button',
+                    className: 'dshc-action',
+                    onClick: async () => {
+                      const opened = await sendAction({ ...state.editor.action, editor: editor.id })
+                      setState((previous) => ({
+                        ...(previous ?? {}),
+                        busy: '',
+                        note: '',
+                        editor: null,
+                        result: { ...((previous ?? {}).result ?? {}), [state.editor.action.label]: opened },
+                        error: opened ? '' : 'не удалось открыть в ' + editor.name,
+                      }))
+                    },
+                  },
+                  editor.name,
+                ),
+              ),
+              h(
+                'button',
+                { type: 'button', className: 'dshc-action', onClick: () => setState((previous) => ({ ...(previous ?? {}), editor: null })) },
+                'Отмена',
+              ),
+            )
+          : null,
         state.error !== '' && state.error !== undefined
           ? h(
               'span',
