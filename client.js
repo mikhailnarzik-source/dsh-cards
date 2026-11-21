@@ -225,7 +225,9 @@ window.__ModuleLoader__.load({
             )
           : null,
         card.note !== '' ? h('span', { style: { fontSize: 12, opacity: 0.7 } }, card.note) : null,
-        Array.isArray(actions) && actions.length > 0 ? h(CardActions, { actions, copyText }) : null,
+        (Array.isArray(actions) && actions.length > 0) || (typeof copyText === 'string' && copyText !== '')
+          ? h(CardActions, { actions, copyText })
+          : null,
 )
     }
 
