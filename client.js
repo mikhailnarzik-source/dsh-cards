@@ -384,7 +384,8 @@ window.__ModuleLoader__.load({
           if (copied) setTimeout(() => setCopied(false), 1600)
           return
         }
-        // «Открыть в редакторе»: сначала пробуем последний выбор этой сессии.
+        // «Открыть в редакторе»: список показываем всегда, но последний выбор —
+        // первым в списке, чтобы не искать его каждый раз.
         if (action.kind === 'open-in-editor') {
           try {
             const response = await fetch(ACTIONS_PATH, {
@@ -397,15 +398,16 @@ window.__ModuleLoader__.load({
             const editors = Array.isArray(data?.editors) ? data.editors : []
             const remembered = data?.last ?? null
             if (remembered !== null && remembered !== undefined) {
-              const opened = await sendAction({ ...action, editor: remembered.id })
-              setState((previous) => ({ ...(previous ?? {}), busy: '', note: '', editor: null, error: opened ? '' : 'не удалось открыть в ' + remembered.name }))
-              return
+              setLastEditor(remembered)
             }
             if (editors.length === 0) {
               setState((previous) => ({ ...(previous ?? {}), busy: '', note: '', error: 'редакторы не найдены' }))
               return
             }
-            setState((previous) => ({ ...(previous ?? {}), busy: '', note: '', editor: { action, editors } }))
+            const ordered = remembered === null || remembered === undefined
+              ? editors
+              : [...editors.filter((editor) => editor.id === remembered.id), ...editors.filter((editor) => editor.id !== remembered.id)]
+            setState((previous) => ({ ...(previous ?? {}), busy: '', note: '', editor: { action, editors: ordered, last: remembered } }))
             return
           } catch {
             // ниже обычная попытка открыть
@@ -533,7 +535,7 @@ window.__ModuleLoader__.load({
                       }))
                     },
                   },
-                  editor.name,
+                  editor.id === state.editor.last?.id ? editor.name + ' (прошлый выбор)' : editor.name,
                 ),
               ),
               h(

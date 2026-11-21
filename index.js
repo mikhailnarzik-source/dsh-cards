@@ -326,6 +326,22 @@ function openSaveDialog(sourcePath) {
   }
 }
 
+/** Открыть файл или ссылку программой по умолчанию. */
+function startProcess(target) {
+  try {
+    const escaped = String(target).replace(/'/g, "''")
+    const child = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', "Start-Process -FilePath '" + escaped + "'"],
+      { detached: true, stdio: 'ignore', windowsHide: true },
+    )
+    child.unref()
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Положить текст в буфер обмена Windows. */
 function copyToClipboard(text) {
   return new Promise((resolveCopy) => {
@@ -497,63 +513,13 @@ export function apply(ctx) {
             const filePath = insideOpenRoots(body?.target)
             if (filePath === undefined) return json({ ok: false, message: 'этот путь открывать нельзя' })
             if (!existsSync(filePath)) return json({ ok: false, message: 'файл не найден: ' + filePath })
+            const windowsPath = filePath.replaceAll(String.fromCharCode(92), '/').replaceAll('/', String.fromCharCode(92))
             try {
-              execFile(process.env.ComSpec ?? 'cmd.exe', ['/c', 'start', '', filePath.replace(/\//g, '\\')], { windowsHide: true }, () => {})
+              startProcess(windowsPath)
+              return json({ ok: true, message: 'открываю файл', target: windowsPath })
             } catch {
               return json({ ok: false, message: 'не удалось открыть файл' })
             }
-            return json({ ok: true, message: 'открываю файл', target: filePath })
-          }
-
-          if (kind === 'list-editors') {
-            const editors = await detectEditors()
-            const last = editors.find((editor) => editor.id === lastEditorId) ?? null
-            return json({ ok: true, editors, last })
-          }
-
-          if (kind === 'pick-editor') {
-            const chosen = await chooseExecutable()
-            if (chosen === '') return json({ ok: false, message: 'программа не выбрана' })
-            const name = chosen.split(/[\\/]/).pop()?.replace(/\.exe$/i, '') ?? 'Программа'
-            const id = 'custom-' + scannedEditors.length
-            scannedEditors.push({ id, name, command: chosen, exe: chosen, paths: [chosen], path: chosen })
-            lastEditorId = id
-            return json({ ok: true, editor: { id, name }, target: chosen })
-          }
-
-          if (kind === 'download-file') {
-            const url = typeof body?.target === 'string' ? body.target.trim() : ''
-            if (!/^https?:\/\/[^\s]+$/i.test(url)) return json({ ok: false, message: 'скачивать можно только http/https' })
-            const name = typeof body?.name === 'string' && body.name !== '' ? body.name : url.split('/').pop() || 'download.bin'
-            const safeName = name.replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 80) || 'download.bin'
-            const folder = join(homedir(), 'Downloads')
-            const target = join(folder, safeName)
-            try {
-              const response = await fetch(url)
-              if (!response.ok) return json({ ok: false, message: 'сервер ответил ' + response.status })
-              const buffer = Buffer.from(await response.arrayBuffer())
-              mkdirSync(folder, { recursive: true })
-              writeFileSync(target, buffer)
-              return json({ ok: true, message: 'сохранено в Загрузки', target })
-            } catch (error) {
-              return json({ ok: false, message: 'не удалось скачать: ' + String(error?.message ?? error) })
-            }
-          }
-
-          if (kind === 'save-as') {
-            const fileToSave = insideOpenRoots(body?.target)
-            if (fileToSave === undefined) return json({ ok: false, message: 'этот файл сохранять нельзя' })
-            if (!existsSync(fileToSave)) return json({ ok: false, message: 'файл не найден: ' + fileToSave })
-            openSaveDialog(fileToSave)
-            return json({ ok: true, message: 'открыт диалог сохранения' })
-          }
-
-          if (kind === 'open-in-editor') {
-            const fileForEditor = insideOpenRoots(body?.target)
-            if (fileForEditor === undefined) return json({ ok: false, message: 'этот файл открывать нельзя' })
-            if (!existsSync(fileForEditor)) return json({ ok: false, message: 'файл не найден: ' + fileForEditor })
-            const editor = await openInEditor(fileForEditor, body?.editor)
-            return json({ ok: editor.ok, message: editor.ok ? 'открыто в ' + editor.editor : editor.message, target: fileForEditor })
           }
 
           if (kind === 'open-folder') {
