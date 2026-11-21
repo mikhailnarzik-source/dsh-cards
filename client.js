@@ -302,7 +302,7 @@ window.__ModuleLoader__.load({
 
     /** Кнопки действий карточки: одинаковый вид, переключатель переноса строк. */
     function CardActions({ actions, copyText }) {
-      const [state, setState] = React.useState({ busy: '', note: '', result: {} })
+      const [state, setState] = React.useState({ busy: '', note: '', result: {}, error: '' })
       const results = state.result ?? {}
       const [copied, setCopied] = React.useState(false)
       const ACTIONS_PATH = '/api/dsh-cards/action'
@@ -333,6 +333,11 @@ window.__ModuleLoader__.load({
             body: JSON.stringify({ kind: action.kind, target: action.target, plugin: action.plugin }),
           })
           const data = await response.json()
+          if (COLORED_KINDS.includes(action.kind) && data?.ok !== true) {
+            const reason = [data?.message, String(data?.output ?? '').trim().split(String.fromCharCode(10))[0]].filter(Boolean).join(': ')
+            setState((previous) => ({ ...(previous ?? {}), busy: '', note: '', error: reason, result: { ...((previous ?? {}).result ?? {}), [action.label]: false } }))
+            return
+          }
           if (COLORED_KINDS.includes(action.kind) && data?.ok === true) {
             setState((previous) => ({ ...(previous ?? {}), busy: '', note: '', result: { ...((previous ?? {}).result ?? {}), [action.label]: true } }))
           } else if (COLORED_KINDS.includes(action.kind)) {
@@ -395,7 +400,7 @@ window.__ModuleLoader__.load({
                 key: action.label,
                 type: 'button',
                 className: 'dshc-action',
-                disabled: state.busy !== '' || (COLORED_KINDS.includes(action.kind) && results[action.label] === true),
+                disabled: state.busy !== '',
                 onClick: () => void run(action),
                 style:
                   COLORED_KINDS.includes(action.kind) && results[action.label] === true
