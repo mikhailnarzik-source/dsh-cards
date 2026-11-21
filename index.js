@@ -9,7 +9,8 @@
  * рабочей папки проекта. Произвольные команды запрещены.
  */
 import { execFile } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
 export const name = 'dsh-cards'

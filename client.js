@@ -178,7 +178,7 @@ window.__ModuleLoader__.load({
     }
 
     /** Сама карточка: используется и в предпросмотре, и в ответе ассистента. */
-    function CardView({ card, actions, copyText }) {
+    function CardView({ card, actions, copyText, detailText }) {
       return h(
         'div',
         {
@@ -222,6 +222,28 @@ window.__ModuleLoader__.load({
                   h('span', null, item),
                 ),
               ),
+            )
+          : null,
+        typeof detailText === 'string' && detailText !== ''
+          ? h(
+              'pre',
+              {
+                style: {
+                  margin: '2px 0 0',
+                  padding: '8px 10px',
+                  borderRadius: 8,
+                  border: '1px solid rgba(128,128,128,0.22)',
+                  background: 'rgba(0,0,0,0.12)',
+                  fontFamily: 'ui-monospace, Consolas, monospace',
+                  fontSize: 11.5,
+                  lineHeight: 1.5,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  userSelect: 'all',
+                  maxWidth: '100%',
+                },
+              },
+              detailText,
             )
           : null,
         typeof copyText === 'string' && copyText !== ''
@@ -330,7 +352,7 @@ window.__ModuleLoader__.load({
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ kind: action.kind, target: action.target, plugin: action.plugin }),
+            body: JSON.stringify({ kind: action.kind, target: action.target, plugin: action.plugin, name: action.name }),
           })
           const data = await response.json()
           if (COLORED_KINDS.includes(action.kind) && data?.ok !== true) {
@@ -456,11 +478,21 @@ window.__ModuleLoader__.load({
       if (typeof raw.folder === 'string' && raw.folder !== '') {
         actions.push({ label: 'Открыть в папке', kind: 'open-folder', target: raw.folder })
       }
+      const baseName = (value) => String(value).replace(/[\\/]+$/, '').split(/[\\/]/).pop() || value
       if (typeof raw.file === 'string' && raw.file !== '') {
-        actions.push({ label: 'Открыть файл', kind: 'open-file', target: raw.file })
+        const name = baseName(raw.file)
+        actions.push({ label: 'Открыть файл: ' + name, kind: 'open-file', target: raw.file })
+        actions.push({ label: 'Сохранить как…', kind: 'save-as', target: raw.file })
+        actions.push({ label: 'Открыть в редакторе', kind: 'open-in-editor', target: raw.file })
       }
       if (typeof raw.url === 'string' && raw.url !== '') {
-        actions.push({ label: 'Открыть ссылку', kind: 'open-url', target: raw.url })
+        let host = raw.url
+        try { host = new URL(raw.url).host + new URL(raw.url).pathname } catch { host = raw.url }
+        actions.push({ label: 'Открыть ссылку: ' + host.slice(0, 40), kind: 'open-url', target: raw.url })
+        if (raw.download !== false) {
+          const fileName = typeof raw.name === 'string' && raw.name !== '' ? raw.name : baseName(raw.url)
+          actions.push({ label: 'Скачать файл: ' + fileName, kind: 'download-file', target: raw.url, name: fileName })
+        }
       }
       for (const item of Array.isArray(raw.actions) ? raw.actions : []) {
         if (item !== null && typeof item === 'object' && typeof item.label === 'string') {
@@ -469,6 +501,7 @@ window.__ModuleLoader__.load({
             kind: typeof item.kind === 'string' ? item.kind : '',
             target: typeof item.target === 'string' ? item.target : '',
             plugin: typeof item.plugin === 'string' ? item.plugin : '',
+            name: typeof item.name === 'string' ? item.name : '',
             command: typeof item.command === 'string' ? item.command : '',
           })
         }
@@ -490,8 +523,13 @@ window.__ModuleLoader__.load({
         if (action.kind === 'dsh-plugin-update') copyLines.push('dsh plugin --profile desktop remove ' + action.plugin + ' && dsh plugin add ' + action.target)
       }
       const copyText = copyLines.join('\n')
+      const detailLines = []
+      if (typeof raw.file === 'string' && raw.file !== '') detailLines.push('Файл: ' + raw.file)
+      if (typeof raw.url === 'string' && raw.url !== '') detailLines.push('Ссылка: ' + raw.url)
+      if (typeof raw.folder === 'string' && raw.folder !== '') detailLines.push('Папка: ' + raw.folder)
+      const detailText = detailLines.join('\n')
 
-      return h(CardView, { card: parsed.card, actions, copyText })
+      return h(CardView, { card: parsed.card, actions, copyText, detailText })
     }
 
     const EXAMPLE = JSON.stringify(
