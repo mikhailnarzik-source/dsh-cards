@@ -224,6 +224,28 @@ window.__ModuleLoader__.load({
               ),
             )
           : null,
+        typeof copyText === 'string' && copyText !== ''
+          ? h(
+              'pre',
+              {
+                style: {
+                  margin: '2px 0 0',
+                  padding: '8px 10px',
+                  borderRadius: 8,
+                  border: '1px solid rgba(128,128,128,0.25)',
+                  background: 'rgba(0,0,0,0.18)',
+                  fontFamily: 'ui-monospace, Consolas, monospace',
+                  fontSize: 11.5,
+                  lineHeight: 1.5,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  userSelect: 'all',
+                  maxWidth: '100%',
+                },
+              },
+              copyText,
+            )
+          : null,
         card.note !== '' ? h('span', { style: { fontSize: 12, opacity: 0.7 } }, card.note) : null,
         (Array.isArray(actions) && actions.length > 0) || (typeof copyText === 'string' && copyText !== '')
           ? h(CardActions, { actions, copyText })
@@ -266,6 +288,18 @@ window.__ModuleLoader__.load({
       '.dshc-action:disabled { opacity: .6; cursor: progress; }',
     ].join('\n')
 
+    /** Скопировать текст в системный буфер через host. */
+    async function copyTextToHost(text) {
+      const response = await fetch('/api/dsh-cards/action', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ kind: 'copy-text', text }),
+      })
+      const data = await response.json()
+      return data?.ok === true
+    }
+
     /** Кнопки действий карточки: одинаковый вид, переключатель переноса строк. */
     function CardActions({ actions, copyText }) {
       const [state, setState] = React.useState({ busy: '', note: '' })
@@ -274,6 +308,12 @@ window.__ModuleLoader__.load({
 
       const run = async (action) => {
         setState({ busy: action.label, note: '' })
+        if (action.kind === 'copy') {
+          const text = action.command !== '' ? action.command : copyText
+          if (text === '') { setState({ busy: '', note: 'нечего копировать' }); return }
+          await copyTextToHost(text)
+          return
+        }
         try {
           const response = await fetch(ACTIONS_PATH, {
             method: 'POST',
@@ -298,14 +338,7 @@ window.__ModuleLoader__.load({
         }
         // Копируем через host: в окне приложения системный буфер надёжнее браузерного.
         try {
-          const response = await fetch(ACTIONS_PATH, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ kind: 'copy-text', text: command }),
-          })
-          const data = await response.json()
-          if (data?.ok === true) { confirm(); return }
+          if (await copyTextToHost(command)) { confirm(); return }
         } catch {
           // ниже попробуем браузерный способ
         }
@@ -390,14 +423,15 @@ window.__ModuleLoader__.load({
         }
       }
 
-      // Текст для копирования: код, команды или выведенные команды действий.
+      // Текст для копирования: ровно то, что видно в карточке.
       const copyLines = []
       if (typeof raw.code === 'string' && raw.code.trim() !== '') copyLines.push(raw.code.trim())
       if (typeof raw.command === 'string' && raw.command.trim() !== '') copyLines.push(raw.command.trim())
       if (Array.isArray(raw.commands)) {
         for (const line of raw.commands) if (typeof line === 'string' && line.trim() !== '') copyLines.push(line.trim())
       }
-      for (const action of actions) {
+      const hasExplicitText = copyLines.length > 0
+      if (!hasExplicitText) for (const action of actions) {
         if (action.command !== '') { copyLines.push(action.command); continue }
         if (action.kind === 'git-push') copyLines.push('git -C "' + action.target + '" push origin main')
         // open-folder не добавляет текст для копирования: это действие, а не команда
