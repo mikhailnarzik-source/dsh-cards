@@ -11,7 +11,7 @@
 import { execFile, spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, extname, join, resolve } from 'node:path'
 
 export const name = 'dsh-cards'
 export const inject = ['connection']
@@ -293,6 +293,87 @@ async function editorIcon(exePath) {
   return icon
 }
 
+/** Дружелюбные имена программ по имени exe. */
+const APP_NAMES = {
+  notepad: 'Блокнот',
+  code: 'Visual Studio Code',
+  winrar: 'WinRAR',
+  explorer: 'Проводник',
+  acrobat: 'Adobe Acrobat',
+  acrord32: 'Adobe Acrobat',
+  sublime_text: 'Sublime Text',
+  notepadpp: 'Notepad++',
+  mspaint: 'Paint',
+  winword: 'Word',
+  powerpnt: 'PowerPoint',
+  vlc: 'VLC media player',
+  cmd: 'Командная строка',
+}
+
+/** Команда открытия по умолчанию для расширения (UserChoice + реестр). */
+function defaultCommandFor(extension) {
+  const script = [
+    "$ext = '" + extension.replace(/'/g, "''") + "'",
+    "$key = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\' + $ext + '\\UserChoice'",
+    '$prog = (Get-ItemProperty $key -ErrorAction SilentlyContinue).ProgId',
+    "if (-not $prog) { $line = (& cmd.exe /c \"assoc $ext\" 2>$null); if ($line -match '=') { $prog = ($line -split '=', 2)[1].Trim() } }",
+    'if (-not $prog) { return }',
+    "$cmdKey = 'Registry::HKEY_CLASSES_ROOT\\' + $prog + '\\shell\\open\\command'",
+    '$cmd = (Get-ItemProperty $cmdKey -ErrorAction SilentlyContinue)."(default)"',
+    'if (-not $cmd) { $ft = (& cmd.exe /c "ftype $prog" 2>$null); if ($ft -match "=") { $cmd = ($ft -split "=", 2)[1].Trim() } }',
+    'if ($cmd) { Write-Output $cmd }',
+  ].join(String.fromCharCode(10))
+  return new Promise((resolveCommand) => {
+    execFile('powershell.exe', ['-NoProfile', '-Command', script], { windowsHide: true, timeout: 15000 }, (error, stdout, stderr) => {
+      resolveCommand(error === null ? String(stdout ?? '').trim() : '')
+    })
+  })
+}
+
+/** Иконка программы, связанной с файлом (или самого файла). */
+async function fileIcon(filePath) {
+  if (filePath === '' || !existsSync(filePath)) return ''
+  const cached = iconCache.get(filePath)
+  if (cached !== undefined) return cached
+  const script = [
+    'Add-Type -AssemblyName System.Drawing',
+    "$icon = [System.Drawing.Icon]::ExtractAssociatedIcon('" + filePath.replace(/'/g, "''") + "')",
+    "if ($icon -eq $null) { return }",
+    '$bitmap = $icon.ToBitmap()',
+    '$stream = New-Object System.IO.MemoryStream',
+    '$bitmap.Save($stream, [System.Drawing.Imaging.ImageFormat]::Png)',
+    '[Convert]::ToBase64String($stream.ToArray())',
+  ].join(String.fromCharCode(10))
+  const icon = await new Promise((resolveIcon) => {
+    execFile('powershell.exe', ['-NoProfile', '-Command', script], { windowsHide: true, timeout: 20000 }, (error, stdout) => {
+      if (error !== null) { resolveIcon(''); return }
+      const base64 = String(stdout ?? '').trim()
+      resolveIcon(base64 === '' ? '' : 'data:image/png;base64,' + base64)
+    })
+  })
+  iconCache.set(filePath, icon)
+  return icon
+}
+
+/** Программа по умолчанию для файла: имя, exe и иконка. */
+async function defaultAppFor(filePath) {
+  const fallback = { name: 'Открыть (по умолчанию)', exe: '', icon: await fileIcon(filePath) }
+  try {
+    const extension = extname(filePath)
+    if (extension === '') return fallback
+    const command = await defaultCommandFor(extension)
+    if (command === '') return fallback
+    const quoted = /"([^"]+?\.exe)"/i.exec(command)
+    const plain = quoted === null ? /([A-Za-z]:\\[^"]+?\.exe)/i.exec(command) : null
+    const exePath = quoted !== null ? quoted[1] : plain !== null ? plain[1] : ''
+    const base = exePath === '' ? '' : (exePath.split(/[\\/]/).pop()?.replace(/\.exe$/i, '').toLowerCase() ?? '')
+    const icon = exePath === '' ? await fileIcon(filePath) : (await editorIcon(exePath)) || (await fileIcon(filePath))
+    return { name: APP_NAMES[base] ?? (base === '' ? fallback.name : base), exe: exePath, icon }
+  } catch {
+    return fallback
+  }
+}
+
 /** Список установленных редакторов. */
 async function detectEditors() {
   scanEditorFolders()
@@ -570,7 +651,9 @@ export function apply(ctx) {
               editor.default = editor.id === 'notepad'
             }
             const last = editors.find((editor) => editor.id === lastEditorId) ?? null
-            return json({ ok: true, editors, last })
+            const target = typeof body?.target === 'string' ? insideOpenRoots(body.target) : undefined
+            const defaultApp = target === undefined ? null : await defaultAppFor(target)
+            return json({ ok: true, editors, last, defaultApp })
           }
 
           if (kind === 'pick-editor') {
