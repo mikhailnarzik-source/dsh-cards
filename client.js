@@ -419,6 +419,13 @@ window.__ModuleLoader__.load({
                 { type: 'button', className: 'dshc-action', onClick: () => void copy() },
                 copied ? 'Скопировано' : 'Копировать команду',
               ),
+        state.error !== '' && state.error !== undefined
+          ? h(
+              'span',
+              { style: { fontSize: 12, color: 'rgba(255,120,120,0.95)', lineHeight: 1.4 } },
+              state.error,
+            )
+          : null,
         ),
 
       )
