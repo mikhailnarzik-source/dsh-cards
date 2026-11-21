@@ -481,17 +481,17 @@ window.__ModuleLoader__.load({
       const baseName = (value) => String(value).replace(/[\\/]+$/, '').split(/[\\/]/).pop() || value
       if (typeof raw.file === 'string' && raw.file !== '') {
         const name = baseName(raw.file)
-        actions.push({ label: 'Открыть файл: ' + name, kind: 'open-file', target: raw.file })
+        actions.push({ label: 'Открыть файл', kind: 'open-file', target: raw.file })
         actions.push({ label: 'Сохранить как…', kind: 'save-as', target: raw.file })
         actions.push({ label: 'Открыть в редакторе', kind: 'open-in-editor', target: raw.file })
       }
       if (typeof raw.url === 'string' && raw.url !== '') {
         let host = raw.url
         try { host = new URL(raw.url).host + new URL(raw.url).pathname } catch { host = raw.url }
-        actions.push({ label: 'Открыть ссылку: ' + host.slice(0, 40), kind: 'open-url', target: raw.url })
+        actions.push({ label: 'Открыть ссылку', kind: 'open-url', target: raw.url })
         if (raw.download !== false) {
           const fileName = typeof raw.name === 'string' && raw.name !== '' ? raw.name : baseName(raw.url)
-          actions.push({ label: 'Скачать файл: ' + fileName, kind: 'download-file', target: raw.url, name: fileName })
+          actions.push({ label: 'Скачать файл', kind: 'download-file', target: raw.url, name: fileName })
         }
       }
       for (const item of Array.isArray(raw.actions) ? raw.actions : []) {
@@ -513,14 +513,6 @@ window.__ModuleLoader__.load({
       if (typeof raw.command === 'string' && raw.command.trim() !== '') copyLines.push(raw.command.trim())
       if (Array.isArray(raw.commands)) {
         for (const line of raw.commands) if (typeof line === 'string' && line.trim() !== '') copyLines.push(line.trim())
-      }
-      const hasExplicitText = copyLines.length > 0
-      if (!hasExplicitText) for (const action of actions) {
-        if (action.command !== '') { copyLines.push(action.command); continue }
-        if (action.kind === 'git-push') copyLines.push('git -C "' + action.target + '" push origin main')
-        // open-folder не добавляет текст для копирования: это действие, а не команда
-        if (action.kind === 'run-tests') copyLines.push('cd "' + action.target + '" && node --test')
-        if (action.kind === 'dsh-plugin-update') copyLines.push('dsh plugin --profile desktop remove ' + action.plugin + ' && dsh plugin add ' + action.target)
       }
       const copyText = copyLines.join('\n')
       const detailLines = []
