@@ -303,6 +303,7 @@ window.__ModuleLoader__.load({
     /** Кнопки действий карточки: одинаковый вид, переключатель переноса строк. */
     function CardActions({ actions, copyText }) {
       const [state, setState] = React.useState({ busy: '', note: '', result: {} })
+      const results = state.result ?? {}
       const [copied, setCopied] = React.useState(false)
       const ACTIONS_PATH = '/api/dsh-cards/action'
 
@@ -318,7 +319,7 @@ window.__ModuleLoader__.load({
             copied = false
           }
           setCopied(copied)
-          setState({ busy: '', note: '', result: { [action.label]: copied } })
+          setState((previous) => ({ ...(previous ?? {}), busy: '', note: '', result: { ...((previous ?? {}).result ?? {}), [action.label]: copied } }))
           if (copied) setTimeout(() => setCopied(false), 1600)
           return
         }
@@ -330,9 +331,9 @@ window.__ModuleLoader__.load({
             body: JSON.stringify({ kind: action.kind, target: action.target, plugin: action.plugin }),
           })
           const data = await response.json()
-          setState({ busy: '', note: '', result: { [action.label]: data?.ok === true } })
+          setState((previous) => ({ ...(previous ?? {}), busy: '', note: '', result: { ...((previous ?? {}).result ?? {}), [action.label]: data?.ok === true } }))
         } catch {
-          setState({ busy: '', note: '', result: { [action.label]: false } })
+          setState((previous) => ({ ...(previous ?? {}), busy: '', note: '', result: { ...((previous ?? {}).result ?? {}), [action.label]: false } }))
         }
       }
 
@@ -385,9 +386,9 @@ window.__ModuleLoader__.load({
                 disabled: state.busy !== '',
                 onClick: () => void run(action),
                 style:
-                  state.result[action.label] === true
+                  results[action.label] === true
                     ? { background: 'rgba(47,158,68,0.45)', borderColor: 'rgba(47,158,68,0.95)' }
-                    : state.result[action.label] === false
+                    : results[action.label] === false
                       ? { background: 'rgba(224,49,49,0.42)', borderColor: 'rgba(224,49,49,0.95)' }
                       : undefined,
               },
