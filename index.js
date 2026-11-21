@@ -84,20 +84,58 @@ function gitInDir(cwd, program, args, timeout = 180_000) {
   })
 }
 
+/** Известные редакторы: id → команда и человеческое имя. */
+const EDITORS = [
+  { id: 'vscode', name: 'VS Code', command: 'code.exe' },
+  { id: 'cursor', name: 'Cursor', command: 'cursor.exe' },
+  { id: 'sublime', name: 'Sublime Text', command: 'subl.exe' },
+  { id: 'notepadpp', name: 'Notepad++', command: 'notepad++.exe' },
+  { id: 'notepad', name: 'Блокнот', command: 'notepad.exe' },
+]
+
+/** Установлен ли редактор. */
+function editorAvailable(command) {
+  return new Promise((resolveAvailable) => {
+    execFile(process.env.ComSpec ?? 'cmd.exe', ['/c', 'where', command.replace(/\.exe$/i, '')], { windowsHide: true, timeout: 8000 }, (error) => {
+      resolveAvailable(error === null)
+    })
+  })
+}
+
+/** Список установленных редакторов. */
+async function detectEditors() {
+  const found = []
+  for (const editor of EDITORS) {
+    if (await editorAvailable(editor.command)) found.push({ id: editor.id, name: editor.name })
+  }
+  return found
+}
+
 /** Открыть файл в найденном редакторе; запасной вариант — блокнот. */
-function openInEditor(filePath) {
+
+
+/** Открыть файл в редакторе: конкретном или первом найденном. */
+function openInEditor(filePath, requested) {
   return new Promise((resolveEditor) => {
-    const candidates = [
-      { editor: 'VS Code', command: 'code.exe' },
-      { editor: 'Cursor', command: 'cursor.exe' },
-      { editor: 'Sublime Text', command: 'subl.exe' },
-      { editor: 'Notepad++', command: 'notepad++.exe' },
-      { editor: 'Блокнот', command: 'notepad.exe' },
-    ]
+    let candidates = EDITORS.map((editor) => ({ editor: editor.name, command: editor.command, id: editor.id }))
+    if (typeof requested === 'string' && requested !== '' && requested !== 'auto') {
+      const wanted = candidates.filter((editor) => editor.id === requested)
+      if (wanted.length === 0) {
+        resolveEditor({ ok: false, editor: '', message: 'неизвестный редактор: ' + requested })
+        return
+      }
+      candidates = wanted
+    }
     const tryNext = (index) => {
-      if (index >= candidates.length) { resolveEditor({ ok: false, editor: '', message: 'редактор не найден' }); return }
+      if (index >= candidates.length) {
+        resolveEditor({ ok: false, editor: '', message: 'редактор не найден' })
+        return
+      }
       execFile(candidates[index].command, [filePath], { windowsHide: false, timeout: 20_000 }, (error) => {
-        if (error === null) { resolveEditor({ ok: true, editor: candidates[index].editor }); return }
+        if (error === null) {
+          resolveEditor({ ok: true, editor: candidates[index].editor })
+          return
+        }
         tryNext(index + 1)
       })
     }
@@ -274,7 +312,7 @@ export function apply(ctx) {
             const fileForEditor = insideOpenRoots(body?.target)
             if (fileForEditor === undefined) return json({ ok: false, message: 'этот файл открывать нельзя' })
             if (!existsSync(fileForEditor)) return json({ ok: false, message: 'файл не найден: ' + fileForEditor })
-            const editor = await openInEditor(fileForEditor)
+            const editor = await openInEditor(fileForEditor, body?.editor)
             return json({ ok: editor.ok, message: editor.ok ? 'открыто в ' + editor.editor : editor.message, target: fileForEditor })
           }
 
@@ -300,6 +338,46 @@ export function apply(ctx) {
               return json({ ok: false, message: 'не удалось открыть файл' })
             }
             return json({ ok: true, message: 'открываю файл', target: filePath })
+          }
+
+          if (kind === 'list-editors') {
+            const editors = await detectEditors()
+            return json({ ok: true, editors })
+          }
+
+          if (kind === 'download-file') {
+            const url = typeof body?.target === 'string' ? body.target.trim() : ''
+            if (!/^https?:\/\/[^\s]+$/i.test(url)) return json({ ok: false, message: 'скачивать можно только http/https' })
+            const name = typeof body?.name === 'string' && body.name !== '' ? body.name : url.split('/').pop() || 'download.bin'
+            const safeName = name.replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 80) || 'download.bin'
+            const folder = join(homedir(), 'Downloads')
+            const target = join(folder, safeName)
+            try {
+              const response = await fetch(url)
+              if (!response.ok) return json({ ok: false, message: 'сервер ответил ' + response.status })
+              const buffer = Buffer.from(await response.arrayBuffer())
+              mkdirSync(folder, { recursive: true })
+              writeFileSync(target, buffer)
+              return json({ ok: true, message: 'сохранено в Загрузки', target })
+            } catch (error) {
+              return json({ ok: false, message: 'не удалось скачать: ' + String(error?.message ?? error) })
+            }
+          }
+
+          if (kind === 'save-as') {
+            const fileToSave = insideOpenRoots(body?.target)
+            if (fileToSave === undefined) return json({ ok: false, message: 'этот файл сохранять нельзя' })
+            if (!existsSync(fileToSave)) return json({ ok: false, message: 'файл не найден: ' + fileToSave })
+            openSaveDialog(fileToSave)
+            return json({ ok: true, message: 'открыт диалог сохранения' })
+          }
+
+          if (kind === 'open-in-editor') {
+            const fileForEditor = insideOpenRoots(body?.target)
+            if (fileForEditor === undefined) return json({ ok: false, message: 'этот файл открывать нельзя' })
+            if (!existsSync(fileForEditor)) return json({ ok: false, message: 'файл не найден: ' + fileForEditor })
+            const editor = await openInEditor(fileForEditor, body?.editor)
+            return json({ ok: editor.ok, message: editor.ok ? 'открыто в ' + editor.editor : editor.message, target: fileForEditor })
           }
 
           if (kind === 'open-folder') {
