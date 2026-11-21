@@ -9,7 +9,7 @@
  * рабочей папки проекта. Произвольные команды запрещены.
  */
 import { execFile } from 'node:child_process'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
@@ -84,20 +84,85 @@ function gitInDir(cwd, program, args, timeout = 180_000) {
   })
 }
 
-/** Известные редакторы: id → команда и человеческое имя. */
+/** Известные редакторы: имя, команда в PATH и прямые пути установки. */
 const EDITORS = [
-  { id: 'vscode', name: 'VS Code', command: 'code', exe: 'code.exe' },
-  { id: 'cursor', name: 'Cursor', command: 'cursor', exe: 'cursor.exe' },
-  { id: 'sublime', name: 'Sublime Text', command: 'subl', exe: 'subl.exe' },
-  { id: 'notepadpp', name: 'Notepad++', command: 'notepad++', exe: 'notepad++.exe' },
-  { id: 'notepad', name: 'Блокнот', command: 'notepad', exe: 'notepad.exe' },
+  { id: 'vscode', name: 'VS Code', command: 'code', exe: 'code.exe', paths: ['%LOCALAPPDATA%/Programs/Microsoft VS Code/Code.exe', '%PROGRAMFILES%/Microsoft VS Code/Code.exe'] },
+  { id: 'vscode-insiders', name: 'VS Code Insiders', command: 'code-insiders', exe: 'Code - Insiders.exe', paths: ['%LOCALAPPDATA%/Programs/Microsoft VS Code Insiders/Code - Insiders.exe'] },
+  { id: 'vscodium', name: 'VSCodium', command: 'codium', exe: 'VSCodium.exe', paths: ['%LOCALAPPDATA%/Programs/VSCodium/VSCodium.exe'] },
+  { id: 'cursor', name: 'Cursor', command: 'cursor', exe: 'Cursor.exe', paths: ['%LOCALAPPDATA%/Programs/cursor/Cursor.exe'] },
+  { id: 'windsurf', name: 'Windsurf', command: 'windsurf', exe: 'Windsurf.exe', paths: ['%LOCALAPPDATA%/Programs/Windsurf/Windsurf.exe'] },
+  { id: 'trae', name: 'Trae', command: 'trae', exe: 'Trae.exe', paths: ['%LOCALAPPDATA%/Programs/Trae/Trae.exe'] },
+  { id: 'zed', name: 'Zed', command: 'zed', exe: 'Zed.exe', paths: ['%LOCALAPPDATA%/Programs/Zed/Zed.exe'] },
+  { id: 'sublime', name: 'Sublime Text', command: 'subl', exe: 'sublime_text.exe', paths: ['%PROGRAMFILES%/Sublime Text/sublime_text.exe', '%PROGRAMFILES%/Sublime Text 3/sublime_text.exe'] },
+  { id: 'notepadpp', name: 'Notepad++', command: 'notepad++', exe: 'notepad++.exe', paths: ['%PROGRAMFILES%/Notepad++/notepad++.exe', '%PROGRAMFILES(x86)%/Notepad++/notepad++.exe'] },
+  { id: 'notepad3', name: 'Notepad3', command: 'Notepad3', exe: 'Notepad3.exe', paths: ['%PROGRAMFILES%/Notepad3/Notepad3.exe'] },
+  { id: 'atom', name: 'Atom', command: 'atom', exe: 'atom.exe', paths: ['%LOCALAPPDATA%/atom/atom.exe'] },
+  { id: 'brackets', name: 'Brackets', command: 'brackets', exe: 'Brackets.exe', paths: ['%PROGRAMFILES%/Brackets/Brackets.exe'] },
+  { id: 'idea', name: 'IntelliJ IDEA', command: 'idea64', exe: 'idea64.exe', paths: [] },
+  { id: 'pycharm', name: 'PyCharm', command: 'pycharm64', exe: 'pycharm64.exe', paths: [] },
+  { id: 'webstorm', name: 'WebStorm', command: 'webstorm64', exe: 'webstorm64.exe', paths: [] },
+  { id: 'phpstorm', name: 'PhpStorm', command: 'phpstorm64', exe: 'phpstorm64.exe', paths: [] },
+  { id: 'goland', name: 'GoLand', command: 'goland64', exe: 'goland64.exe', paths: [] },
+  { id: 'clion', name: 'CLion', command: 'clion64', exe: 'clion64.exe', paths: [] },
+  { id: 'rider', name: 'Rider', command: 'rider64', exe: 'rider64.exe', paths: [] },
+  { id: 'rubymine', name: 'RubyMine', command: 'rubymine64', exe: 'rubymine64.exe', paths: [] },
+  { id: 'android-studio', name: 'Android Studio', command: 'studio64', exe: 'studio64.exe', paths: ['%PROGRAMFILES%/Android/Android Studio/bin/studio64.exe'] },
+  { id: 'visualstudio', name: 'Visual Studio', command: 'devenv', exe: 'devenv.exe', paths: [] },
+  { id: 'vim', name: 'Vim', command: 'vim', exe: 'vim.exe', paths: [] },
+  { id: 'neovim', name: 'Neovim', command: 'nvim', exe: 'nvim.exe', paths: ['%LOCALAPPDATA%/nvim/bin/nvim.exe', '%PROGRAMFILES%/Neovim/bin/nvim.exe'] },
+  { id: 'emacs', name: 'Emacs', command: 'emacs', exe: 'emacs.exe', paths: [] },
+  { id: 'notepad', name: 'Блокнот', command: 'notepad', exe: 'notepad.exe', paths: [] },
 ]
 
-/** Установлен ли редактор. */
-function editorAvailable(command) {
+/** Развернуть %ПЕРЕМЕННУЮ% в пути. */
+function expandEnv(template) {
+  let result = template
+  for (let step = 0; step < 5; step += 1) {
+    const match = /%([A-Za-z_()]+)%/.exec(result)
+    if (match === null) break
+    const value = process.env[match[1]] ?? ''
+    if (value === '') return ''
+    result = result.replace(match[0], value)
+  }
+  return result
+}
+
+/** Свои редакторы из %USERPROFILE%/.dsh/dsh-cards/editors.json. */
+function customEditors() {
+  try {
+    const file = join(homedir(), '.dsh', 'dsh-cards', 'editors.json')
+    if (!existsSync(file)) return []
+    const parsed = JSON.parse(readFileSync(file, 'utf8'))
+    const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.editors) ? parsed.editors : []
+    return list
+      .filter((item) => item !== null && typeof item === 'object' && typeof item.command === 'string' && item.command !== '')
+      .map((item) => ({
+        id: typeof item.id === 'string' && item.id !== '' ? item.id : item.command,
+        name: typeof item.name === 'string' && item.name !== '' ? item.name : item.command,
+        command: item.command,
+        exe: typeof item.exe === 'string' ? item.exe : item.command,
+        paths: Array.isArray(item.paths) ? item.paths.filter((path) => typeof path === 'string') : [],
+      }))
+  } catch {
+    return []
+  }
+}
+
+/** Все редакторы: встроенные и добавленные пользователем. */
+function allEditors() {
+  return [...EDITORS, ...customEditors()]
+}
+
+/** Команда запуска редактора, если он установлен. */
+function editorAvailable(editor) {
   return new Promise((resolveAvailable) => {
-    execFile(process.env.ComSpec ?? 'cmd.exe', ['/c', 'where', command], { windowsHide: true, timeout: 8000 }, (error) => {
-      resolveAvailable(error === null)
+    execFile(process.env.ComSpec ?? 'cmd.exe', ['/c', 'where', editor.command], { windowsHide: true, timeout: 8000 }, (error) => {
+      if (error === null) { resolveAvailable(editor.command); return }
+      for (const template of editor.paths ?? []) {
+        const full = expandEnv(template)
+        if (full !== '' && existsSync(full)) { resolveAvailable(full); return }
+      }
+      resolveAvailable('')
     })
   })
 }
@@ -105,19 +170,18 @@ function editorAvailable(command) {
 /** Список установленных редакторов. */
 async function detectEditors() {
   const found = []
-  for (const editor of EDITORS) {
-    if (await editorAvailable(editor.command)) found.push({ id: editor.id, name: editor.name })
+  for (const editor of allEditors()) {
+    const launch = await editorAvailable(editor)
+    if (launch === '') continue
+    found.push({ id: editor.id, name: editor.name, launch })
   }
   return found
 }
 
-/** Открыть файл в найденном редакторе; запасной вариант — блокнот. */
-
-
 /** Открыть файл в редакторе: конкретном или первом найденном. */
 function openInEditor(filePath, requested) {
   return new Promise((resolveEditor) => {
-    let candidates = EDITORS.map((editor) => ({ ...editor }))
+    let candidates = allEditors().map((editor) => ({ ...editor }))
     if (typeof requested === 'string' && requested !== '' && requested !== 'auto') {
       const wanted = candidates.filter((editor) => editor.id === requested)
       if (wanted.length === 0) {
