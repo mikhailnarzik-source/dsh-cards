@@ -341,11 +341,32 @@ window.__ModuleLoader__.load({
     /** Кнопки действий карточки: одинаковый вид, переключатель переноса строк. */
     function CardActions({ actions, copyText }) {
       const [state, setState] = React.useState({ busy: '', note: '', result: {}, error: '', editor: null })
+      const [lastEditor, setLastEditor] = React.useState(null)
       const results = state.result ?? {}
       const [copied, setCopied] = React.useState(false)
       const ACTIONS_PATH = '/api/dsh-cards/action'
       // Цвет результата только у действий, которые что-то выполняют.
       const COLORED_KINDS = ['git-push', 'git-pull', 'run-tests', 'dsh-plugin-add', 'dsh-plugin-update']
+
+      // Показываем в подписи последний выбранный редактор (до перезапуска DSH).
+      React.useEffect(() => {
+        let cancelled = false
+        void (async () => {
+          try {
+            const response = await fetch(ACTIONS_PATH, {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ kind: 'list-editors' }),
+            })
+            const data = await response.json()
+            if (!cancelled && data?.last) setLastEditor(data.last)
+          } catch {
+            // без последнего выбора работаем как обычно
+          }
+        })()
+        return () => { cancelled = true }
+      }, [])
 
       const run = async (action) => {
         setState({ busy: action.label, note: '' })
@@ -363,8 +384,8 @@ window.__ModuleLoader__.load({
           if (copied) setTimeout(() => setCopied(false), 1600)
           return
         }
-        // «Открыть в редакторе» без явного выбора: показываем список найденных.
-        if (action.kind === 'open-in-editor' && (action.editor === undefined || action.editor === '')) {
+        // «Открыть в редакторе»: сначала пробуем последний выбор этой сессии.
+        if (action.kind === 'open-in-editor') {
           try {
             const response = await fetch(ACTIONS_PATH, {
               method: 'POST',
@@ -374,6 +395,12 @@ window.__ModuleLoader__.load({
             })
             const data = await response.json()
             const editors = Array.isArray(data?.editors) ? data.editors : []
+            const remembered = data?.last ?? null
+            if (remembered !== null && remembered !== undefined) {
+              const opened = await sendAction({ ...action, editor: remembered.id })
+              setState((previous) => ({ ...(previous ?? {}), busy: '', note: '', editor: null, error: opened ? '' : 'не удалось открыть в ' + remembered.name }))
+              return
+            }
             if (editors.length === 0) {
               setState((previous) => ({ ...(previous ?? {}), busy: '', note: '', error: 'редакторы не найдены' }))
               return
@@ -508,6 +535,23 @@ window.__ModuleLoader__.load({
                   },
                   editor.name,
                 ),
+              ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dshc-action',
+                  onClick: async () => {
+                    const chosen = await sendAction({ kind: 'pick-editor' })
+                    if (chosen === false) {
+                      setState((previous) => ({ ...(previous ?? {}), editor: null, error: 'программа не выбрана' }))
+                      return
+                    }
+                    const opened = await sendAction({ ...state.editor.action })
+                    setState((previous) => ({ ...(previous ?? {}), editor: null, note: '', error: opened ? '' : 'не удалось открыть выбранной программой' }))
+                  },
+                },
+                'Указать программу…',
               ),
               h(
                 'button',

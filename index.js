@@ -8,7 +8,7 @@
  * Безопасность: выполняются только известные виды действий и только внутри
  * рабочей папки проекта. Произвольные команды запрещены.
  */
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -84,6 +84,12 @@ function gitInDir(cwd, program, args, timeout = 180_000) {
   })
 }
 
+/** Последний выбранный редактор. Живёт только в памяти host-процесса,
+ * поэтому при перезапуске DSH выбор сбрасывается. */
+let lastEditorId = ''
+/** Редакторы, найденные сканированием папок установки. */
+const scannedEditors = []
+
 /** Известные редакторы: имя, команда в PATH и прямые пути установки. */
 const EDITORS = [
   { id: 'vscode', name: 'VS Code', command: 'code', exe: 'code.exe', paths: ['%LOCALAPPDATA%/Programs/Microsoft VS Code/Code.exe', '%PROGRAMFILES%/Microsoft VS Code/Code.exe'] },
@@ -113,6 +119,63 @@ const EDITORS = [
   { id: 'emacs', name: 'Emacs', command: 'emacs', exe: 'emacs.exe', paths: [] },
   { id: 'notepad', name: 'Блокнот', command: 'notepad', exe: 'notepad.exe', paths: [] },
 ]
+
+/** Похоже ли имя папки на редактор и как его подписать. */
+const SCAN_HINTS = [
+  { match: /microsoft vs code/i, id: 'vscode-scanned', name: 'VS Code' },
+  { match: /vscodium/i, id: 'vscodium-scanned', name: 'VSCodium' },
+  { match: /cursor/i, id: 'cursor-scanned', name: 'Cursor' },
+  { match: /windsurf/i, id: 'windsurf-scanned', name: 'Windsurf' },
+  { match: /zed/i, id: 'zed-scanned', name: 'Zed' },
+  { match: /sublime/i, id: 'sublime-scanned', name: 'Sublime Text' },
+  { match: /notepad\+\+/i, id: 'notepadpp-scanned', name: 'Notepad++' },
+  { match: /notepad3/i, id: 'notepad3-scanned', name: 'Notepad3' },
+  { match: /neovim/i, id: 'neovim-scanned', name: 'Neovim' },
+  { match: /jetbrains/i, id: 'jetbrains-scanned', name: 'JetBrains' },
+  { match: /android studio/i, id: 'studio-scanned', name: 'Android Studio' },
+  { match: /atom/i, id: 'atom-scanned', name: 'Atom' },
+  { match: /brackets/i, id: 'brackets-scanned', name: 'Brackets' },
+]
+
+/** Найти исполняемый файл в папке на глубине до двух уровней. */
+function findExecutable(dir) {
+  let entries = []
+  try { entries = readdirSync(dir, { withFileTypes: true }) } catch { return '' }
+  for (const entry of entries) {
+    if (!entry.isFile()) continue
+    if (!entry.name.toLowerCase().endsWith('.exe')) continue
+    return join(dir, entry.name)
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const nested = findExecutable(join(dir, entry.name))
+    if (nested !== '') return nested
+  }
+  return ''
+}
+
+/** Просканировать типовые папки установки приложений. */
+function scanEditorFolders() {
+  const roots = [
+    process.env['ProgramFiles'] ?? '',
+    process.env['ProgramFiles(x86)'] ?? '',
+    process.env['LOCALAPPDATA'] ? join(process.env['LOCALAPPDATA'], 'Programs') : '',
+  ].filter((root) => root !== '')
+  for (const root of roots) {
+    let entries = []
+    try { entries = readdirSync(root, { withFileTypes: true }) } catch { continue }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const hint = SCAN_HINTS.find((item) => item.match.test(entry.name))
+      if (hint === undefined) continue
+      const exe = findExecutable(join(root, entry.name))
+      if (exe === '') continue
+      if (scannedEditors.some((editor) => editor.path === exe)) continue
+      scannedEditors.push({ id: hint.id + '-' + scannedEditors.length, name: hint.name, command: exe, exe, paths: [exe], path: exe })
+    }
+  }
+  return scannedEditors
+}
 
 /** Развернуть %ПЕРЕМЕННУЮ% в пути. */
 function expandEnv(template) {
@@ -150,7 +213,7 @@ function customEditors() {
 
 /** Все редакторы: встроенные и добавленные пользователем. */
 function allEditors() {
-  return [...EDITORS, ...customEditors()]
+  return [...EDITORS, ...scannedEditors, ...customEditors()]
 }
 
 /** Команда запуска редактора, если он установлен. */
@@ -169,16 +232,21 @@ function editorAvailable(editor) {
 
 /** Список установленных редакторов. */
 async function detectEditors() {
+  scanEditorFolders()
   const found = []
+  const seen = new Set()
   for (const editor of allEditors()) {
     const launch = await editorAvailable(editor)
     if (launch === '') continue
+    const key = editor.name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
     found.push({ id: editor.id, name: editor.name, launch })
   }
   return found
 }
 
-/** Открыть файл в редакторе: конкретном или первом найденном. */
+/** Открыть файл в редакторе: конкретном или последнем выбранном. */
 function openInEditor(filePath, requested) {
   return new Promise((resolveEditor) => {
     let candidates = allEditors().map((editor) => ({ ...editor }))
@@ -191,31 +259,50 @@ function openInEditor(filePath, requested) {
       candidates = wanted
     }
 
-    /** Запуск через cmd: работает и для .exe, и для .cmd-обёрток. */
-    const launch = (editor, done) => {
-      const viaCmd = () => {
-        execFile(process.env.ComSpec ?? 'cmd.exe', ['/c', editor.command, filePath], { windowsHide: true, timeout: 25_000 }, (error) => {
-          if (error === null) { done(true); return }
-          const viaExe = () => {
-            execFile(editor.exe, [filePath], { windowsHide: false, timeout: 25_000 }, (exeError) => done(exeError === null))
-          }
-          viaExe()
-        })
+    // Запускаем и не ждём закрытия: редактор живёт своей жизнью.
+    const launchDetached = (editor) => {
+      try {
+        const isShim = /^[A-Za-z0-9_.+-]+$/.test(editor.command)
+        const program = isShim ? (process.env.ComSpec ?? 'cmd.exe') : editor.command
+        const args = isShim ? ['/c', editor.command, filePath] : [filePath]
+        const child = spawn(program, args, { detached: true, stdio: 'ignore', windowsHide: true })
+        child.unref()
+        return true
+      } catch {
+        try {
+          const child = spawn(editor.exe, [filePath], { detached: true, stdio: 'ignore', windowsHide: false })
+          child.unref()
+          return true
+        } catch {
+          return false
+        }
       }
-      viaCmd()
     }
 
-    const tryNext = (index) => {
-      if (index >= candidates.length) {
-        resolveEditor({ ok: false, editor: '', message: 'не удалось открыть: редакторы не отвечают' })
+    for (const editor of candidates) {
+      if (launchDetached(editor)) {
+        resolveEditor({ ok: true, editor: editor.name, id: editor.id })
         return
       }
-      launch(candidates[index], (ok) => {
-        if (ok) { resolveEditor({ ok: true, editor: candidates[index].name }); return }
-        tryNext(index + 1)
-      })
     }
-    tryNext(0)
+    resolveEditor({ ok: false, editor: '', message: 'не удалось запустить редактор' })
+  })
+}
+
+/** Показать диалог выбора любой программы и вернуть путь к ней. */
+function chooseExecutable() {
+  return new Promise((resolveChoice) => {
+    const script = [
+      'Add-Type -AssemblyName System.Windows.Forms | Out-Null',
+      '$dialog = New-Object System.Windows.Forms.OpenFileDialog',
+      "$dialog.Title = 'Выберите редактор'",
+      "$dialog.Filter = 'Программы (*.exe)|*.exe'",
+      'if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $dialog.FileName }',
+    ].join(String.fromCharCode(10))
+    execFile('powershell.exe', ['-NoProfile', '-STA', '-Command', script], { windowsHide: false, timeout: 120_000 }, (error, stdout) => {
+      if (error !== null) { resolveChoice(''); return }
+      resolveChoice(String(stdout ?? '').trim())
+    })
   })
 }
 
@@ -388,7 +475,9 @@ export function apply(ctx) {
             const fileForEditor = insideOpenRoots(body?.target)
             if (fileForEditor === undefined) return json({ ok: false, message: 'этот файл открывать нельзя' })
             if (!existsSync(fileForEditor)) return json({ ok: false, message: 'файл не найден: ' + fileForEditor })
-            const editor = await openInEditor(fileForEditor, body?.editor)
+            const requested = typeof body?.editor === 'string' ? body.editor : ''
+            const editor = await openInEditor(fileForEditor, requested !== '' ? requested : lastEditorId)
+            if (editor.ok) lastEditorId = requested !== '' ? requested : lastEditorId
             return json({ ok: editor.ok, message: editor.ok ? 'открыто в ' + editor.editor : editor.message, target: fileForEditor })
           }
 
@@ -418,7 +507,18 @@ export function apply(ctx) {
 
           if (kind === 'list-editors') {
             const editors = await detectEditors()
-            return json({ ok: true, editors })
+            const last = editors.find((editor) => editor.id === lastEditorId) ?? null
+            return json({ ok: true, editors, last })
+          }
+
+          if (kind === 'pick-editor') {
+            const chosen = await chooseExecutable()
+            if (chosen === '') return json({ ok: false, message: 'программа не выбрана' })
+            const name = chosen.split(/[\\/]/).pop()?.replace(/\.exe$/i, '') ?? 'Программа'
+            const id = 'custom-' + scannedEditors.length
+            scannedEditors.push({ id, name, command: chosen, exe: chosen, paths: [chosen], path: chosen })
+            lastEditorId = id
+            return json({ ok: true, editor: { id, name }, target: chosen })
           }
 
           if (kind === 'download-file') {
