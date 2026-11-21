@@ -1,5 +1,9 @@
 param([string]$Extension)
 
+# UTF-8 на выходе: иначе кириллица ломается при перенаправлении.
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+
 # Системный перечислитель ассоциаций Windows (SHAssocEnumHandlers) — тот же API,
 # что использует меню «Открыть с помощью» проводника.
 $ErrorActionPreference = 'SilentlyContinue'
@@ -7,6 +11,9 @@ $ErrorActionPreference = 'SilentlyContinue'
 $source = @'
 using System;
 using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -60,6 +67,28 @@ public static class AssocHandlers
         return builder.ToString();
     }
 
+    private static string IconData(string path)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(path) || !File.Exists(path)) return "";
+            using (Icon icon = Icon.ExtractAssociatedIcon(path))
+            {
+                if (icon == null) return "";
+                using (Bitmap bitmap = icon.ToBitmap())
+                using (MemoryStream stream = new MemoryStream())
+                {
+                    bitmap.Save(stream, ImageFormat.Png);
+                    return "data:image/png;base64," + Convert.ToBase64String(stream.ToArray());
+                }
+            }
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
     public static string Dump(string extension)
     {
         IEnumAssocHandlers enumerator = null;
@@ -92,10 +121,12 @@ public static class AssocHandlers
             if (handler.GetUIName(out uiName) != 0) uiName = null;
             if (handler.GetIconLocation(out iconPath, out iconIndex) != 0) iconPath = null;
             string display = string.IsNullOrEmpty(uiName) ? name : uiName;
-            if (!string.IsNullOrEmpty(display) && seen.Add(display))
-            {
-                rows.Add("{\"name\":" + Quote(display) + ",\"command\":" + Quote(name ?? "") + ",\"iconPath\":" + Quote(iconPath ?? "") + ",\"iconIndex\":" + iconIndex + "}");
-            }
+            if (string.IsNullOrEmpty(display) || !seen.Add(display)) continue;
+            string exePath = "";
+            if (!string.IsNullOrEmpty(name) && name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(name)) exePath = name;
+            else if (!string.IsNullOrEmpty(iconPath) && iconPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(iconPath)) exePath = iconPath;
+            string icon = IconData(exePath);
+            rows.Add("{\"name\":" + Quote(display) + ",\"command\":" + Quote(name ?? "") + ",\"iconPath\":" + Quote(iconPath ?? "") + ",\"iconIndex\":" + iconIndex + ",\"icon\":" + Quote(icon) + "}");
         }
         return "[" + string.Join(",", rows) + "]";
     }
@@ -103,7 +134,7 @@ public static class AssocHandlers
 '@
 
 try {
-  Add-Type -TypeDefinition $source -Language CSharp -ErrorAction Stop
+  Add-Type -TypeDefinition $source -Language CSharp -ReferencedAssemblies System.Drawing -ErrorAction Stop
   [AssocHandlers]::Dump($Extension)
 } catch {
   Write-Output '[]'

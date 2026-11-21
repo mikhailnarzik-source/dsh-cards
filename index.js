@@ -357,7 +357,8 @@ async function appsForFile(filePath) {
       if (exePath === '') continue
       const name = typeof item.name === 'string' ? item.name.trim() : ''
       if (name === '') continue
-      const icon = await editorIcon(exePath)
+      const inlineIcon = typeof item.icon === 'string' && item.icon.startsWith('data:') ? item.icon : ''
+      const icon = inlineIcon !== '' ? inlineIcon : await editorIcon(exePath)
       apps.push({ path: exePath, name, icon })
     }
     return apps
