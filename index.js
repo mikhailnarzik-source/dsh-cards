@@ -83,6 +83,24 @@ function gitInDir(cwd, program, args, timeout = 180_000) {
   })
 }
 
+/** Положить текст в буфер обмена Windows. */
+function copyToClipboard(text) {
+  return new Promise((resolveCopy) => {
+    try {
+      const script = 'Set-Clipboard -Value ([Console]::In.ReadToEnd())'
+      const child = execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, timeout: 15_000 }, (error) => {
+        resolveCopy(error === null)
+      })
+      if (child.stdin !== null) {
+        child.stdin.write(text, 'utf8')
+        child.stdin.end()
+      }
+    } catch {
+      resolveCopy(false)
+    }
+  })
+}
+
 /** Выполнить git в каталоге. */
 function git(cwd, args, timeout = 60_000) {
   return new Promise((resolveRun) => {
@@ -172,6 +190,15 @@ export function apply(ctx) {
               message: added.ok ? 'обновлено — перезапусти DSH' : 'обновление не удалось',
               output: (removed.output + '\n' + added.output).trim().slice(-1500),
             })
+          }
+
+          if (kind === 'copy-text') {
+            // Буфер обмена заполняет host: в окне приложения navigator.clipboard
+            // может быть недоступен, и копирование молча не срабатывало.
+            const text = typeof body?.text === 'string' ? body.text : ''
+            if (text === '') return json({ ok: false, message: 'нечего копировать' })
+            const copied = await copyToClipboard(text)
+            return json({ ok: copied, message: copied ? 'скопировано' : 'не удалось скопировать' })
           }
 
           if (kind === 'open-folder') {

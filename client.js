@@ -288,18 +288,32 @@ window.__ModuleLoader__.load({
         }
       }
 
-      const copy = () => {
+      const copy = async () => {
         const command = typeof copyText === 'string' && copyText !== '' ? copyText : actions.map((item) => item.command ?? '').filter((line) => line !== '').join('\n')
+        if (command === '') { setState({ busy: '', note: 'нечего копировать' }); return }
         const confirm = () => {
           setCopied(true)
           setState({ busy: '', note: 'команда скопирована' })
           setTimeout(() => setCopied(false), 1600)
         }
+        // Копируем через host: в окне приложения системный буфер надёжнее браузерного.
         try {
-          void navigator.clipboard.writeText(command)
+          const response = await fetch(ACTIONS_PATH, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ kind: 'copy-text', text: command }),
+          })
+          const data = await response.json()
+          if (data?.ok === true) { confirm(); return }
+        } catch {
+          // ниже попробуем браузерный способ
+        }
+        try {
+          await navigator.clipboard.writeText(command)
           confirm()
         } catch {
-          setState({ busy: '', note: command })
+          setState({ busy: '', note: 'не удалось скопировать' })
         }
       }
 
@@ -335,7 +349,7 @@ window.__ModuleLoader__.load({
           ),
           h(
             'button',
-            { type: 'button', className: 'dshc-action', onClick: copy },
+            { type: 'button', className: 'dshc-action', onClick: () => void copy() },
             copied ? 'Скопировано' : 'Копировать команду',
           ),
         ),
