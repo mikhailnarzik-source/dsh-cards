@@ -409,7 +409,11 @@ window.__ModuleLoader__.load({
                       ? { background: 'rgba(224,49,49,0.42)', borderColor: 'rgba(224,49,49,0.95)' }
                       : undefined,
               },
-              state.busy === action.label ? 'выполняю…' : action.label,
+              state.busy === action.label
+                ? 'выполняю…'
+                : COLORED_KINDS.includes(action.kind) && results[action.label] === true
+                  ? action.label + ' снова'
+                  : action.label,
             ),
           ),
           copyText === '' || actions.some((item) => item.kind === 'copy')
