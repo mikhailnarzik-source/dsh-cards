@@ -10,7 +10,7 @@
  */
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 export const name = 'dsh-cards'
 export const inject = ['connection']
@@ -39,6 +39,27 @@ function insideWorkspace(target) {
   })
     ? absolute
     : undefined
+}
+
+/** Путь к CLI DeepSeek Harness. */
+function cliPath() {
+  const candidates = [
+    process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, 'Programs/DeepSeek Harness/resources/runtime/cli/bin/dsh.cmd') : '',
+    process.env.PROGRAMFILES ? join(process.env.PROGRAMFILES, 'DeepSeek Harness/resources/runtime/cli/bin/dsh.cmd') : '',
+  ]
+  return candidates.find((candidate) => candidate !== '' && existsSync(candidate))
+}
+
+/** Выполнить программу в каталоге (или без него). */
+function gitInDir(cwd, program, args, timeout = 180_000) {
+  return new Promise((resolveRun) => {
+    const isScript = /\.(cmd|bat)$/i.test(program)
+    const realProgram = isScript ? (process.env.ComSpec ?? 'cmd.exe') : program
+    const realArgs = isScript ? ['/c', program, ...args] : args
+    execFile(realProgram, realArgs, { cwd, timeout, windowsHide: true }, (error, stdout, stderr) => {
+      resolveRun({ ok: error === null, output: `${String(stdout ?? '')}${String(stderr ?? '')}`.trim() })
+    })
+  })
 }
 
 /** Выполнить git в каталоге. */
@@ -80,6 +101,34 @@ export function apply(ctx) {
                 : 'git ответил ошибкой',
               output: result.output.slice(-1200),
               target,
+            })
+          }
+
+          if (kind === 'run-tests') {
+            if (target === undefined) return json({ ok: false, message: 'путь вне рабочей папки' })
+            if (!existsSync(target)) return json({ ok: false, message: 'каталог не найден: ' + target })
+            const result = await gitInDir(target, process.execPath, ['--test'])
+            return json({
+              ok: result.ok,
+              message: result.ok ? 'тесты прошли' : 'тесты нашли ошибки',
+              output: result.output.slice(-1500),
+              target,
+            })
+          }
+
+          if (kind === 'dsh-plugin-add') {
+            // target — спецификация установки, вид github:владелец/репозиторий.
+            const spec = typeof body?.target === 'string' ? body.target.trim() : ''
+            if (!/^github:mikhailnarzik-source\/[a-z0-9-]+$/i.test(spec)) {
+              return json({ ok: false, message: 'ожидался github:mikhailnarzik-source/<репозиторий>' })
+            }
+            const cli = cliPath()
+            if (cli === undefined) return json({ ok: false, message: 'CLI DeepSeek Harness не найден' })
+            const result = await gitInDir(undefined, cli, ['plugin', '--profile', 'desktop', 'add', spec])
+            return json({
+              ok: result.ok,
+              message: result.ok ? 'установлено — перезапусти DSH' : 'установка не удалась',
+              output: result.output.slice(-1200),
             })
           }
 

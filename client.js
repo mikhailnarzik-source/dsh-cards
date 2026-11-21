@@ -281,6 +281,34 @@ window.__ModuleLoader__.load({
             ),
           ),
         ),
+        h(
+          'button',
+          {
+            type: 'button',
+            style: {
+              alignSelf: 'flex-start',
+              padding: '4px 10px',
+              borderRadius: 8,
+              border: '1px dashed rgba(128,128,128,0.35)',
+              background: 'transparent',
+              color: 'inherit',
+              font: 'inherit',
+              fontSize: 11.5,
+              opacity: 0.75,
+              cursor: 'pointer',
+            },
+            onClick: () => {
+              const command = actions.map((item) => item.command ?? '').filter((line) => line !== '').join('\n')
+              try {
+                void navigator.clipboard.writeText(command)
+                setState({ busy: '', note: 'команда скопирована' })
+              } catch {
+                setState({ busy: '', note: command })
+              }
+            },
+          },
+          'Копировать команду',
+        ),
         state.note !== '' ? h('span', { style: { fontSize: 11.5, opacity: 0.75 } }, state.note) : null,
       )
     }
@@ -303,6 +331,7 @@ window.__ModuleLoader__.load({
               label: item.label,
               kind: typeof item.kind === 'string' ? item.kind : '',
               target: typeof item.target === 'string' ? item.target : '',
+              command: typeof item.command === 'string' ? item.command : '',
             }))
         }
       } catch {
