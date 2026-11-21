@@ -647,10 +647,8 @@ window.__ModuleLoader__.load({
                   type: 'button',
                   className: 'dshc-menu-item',
                   onClick: async () => {
-                    const target = String(state.editor.action.target ?? '')
-                    const folder = target.replaceAll('\\', '/').split('/').slice(0, -1).join('/')
-                    const opened = await sendAction({ kind: 'open-folder', target: folder })
-                    setState((previous) => ({ ...(previous ?? {}), editor: null, error: opened ? '' : 'не удалось показать папку' }))
+                    const opened = await sendAction({ kind: 'reveal-file', target: state.editor.action.target })
+                    setState((previous) => ({ ...(previous ?? {}), editor: null, error: opened ? '' : 'не удалось показать файл в папке' }))
                   },
                 },
                 h('span', { style: { width: 18, textAlign: 'center', opacity: 0.75 } }, '📁'),

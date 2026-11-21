@@ -521,13 +521,37 @@ function hasFileAssociation(filePath) {
 
 /** Открыть файл или ссылку программой по умолчанию. */
 function startProcess(target) {
+  const value = String(target)
+  // cmd start запускает системную программу по умолчанию, включая UWP-приложения.
   try {
-    const escaped = String(target).replace(/'/g, "''")
+    const child = spawn(process.env.ComSpec ?? 'cmd.exe', ['/c', 'start', '', value], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    })
+    child.unref()
+    return true
+  } catch {
+    // запасной вариант — PowerShell
+  }
+  try {
+    const escaped = value.replace(/'/g, "''")
     const child = spawn(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', "Start-Process -FilePath '" + escaped + "'"],
       { detached: true, stdio: 'ignore', windowsHide: true },
     )
+    child.unref()
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Показать файл в проводнике с выделением. */
+function revealFile(filePath) {
+  try {
+    const child = spawn('explorer.exe', ['/select,' + filePath], { detached: true, stdio: 'ignore' })
     child.unref()
     return true
   } catch {
@@ -759,6 +783,15 @@ export function apply(ctx) {
             const editor = await openInEditor(filePath, lastEditorId)
             if (editor.ok) return json({ ok: true, message: 'нет ассоциации, открыто в ' + editor.editor, target: filePath })
             return json({ ok: false, message: 'нет программы для этого типа файла: выберите редактор в карточке' })
+          }
+
+          if (kind === 'reveal-file') {
+            const filePath = insideOpenRoots(body?.target)
+            if (filePath === undefined) return json({ ok: false, message: 'этот файл показывать нельзя' })
+            if (!existsSync(filePath)) return json({ ok: false, message: 'файл не найден: ' + filePath })
+            const windowsPath = filePath.replaceAll(String.fromCharCode(92), '/').replaceAll('/', String.fromCharCode(92))
+            if (!revealFile(windowsPath)) return json({ ok: false, message: 'не удалось открыть проводник' })
+            return json({ ok: true, message: 'показываю в папке', target: windowsPath })
           }
 
           if (kind === 'open-folder') {
