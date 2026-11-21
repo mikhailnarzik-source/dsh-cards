@@ -277,7 +277,7 @@ window.__ModuleLoader__.load({
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ kind: action.kind, target: action.target }),
+            body: JSON.stringify({ kind: action.kind, target: action.target, plugin: action.plugin }),
           })
           const data = await response.json()
           setState({ busy: '', note: data?.ok === true ? (data.message ?? 'готово') : (data?.message ?? 'ошибка') })
@@ -360,6 +360,7 @@ window.__ModuleLoader__.load({
               kind: typeof item.kind === 'string' ? item.kind : '',
               target: typeof item.target === 'string' ? item.target : '',
               command: typeof item.command === 'string' ? item.command : '',
+              plugin: typeof item.plugin === 'string' ? item.plugin : '',
             }))
         }
       } catch {

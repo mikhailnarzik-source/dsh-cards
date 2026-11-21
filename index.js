@@ -132,6 +132,27 @@ export function apply(ctx) {
             })
           }
 
+          if (kind === 'dsh-plugin-update') {
+            // target — спецификация установки, plugin — имя пакета для удаления.
+            const spec = typeof body?.target === 'string' ? body.target.trim() : ''
+            const packageName = typeof body?.plugin === 'string' ? body.plugin.trim() : ''
+            if (!/^github:mikhailnarzik-source\/[a-z0-9-]+$/i.test(spec)) {
+              return json({ ok: false, message: 'ожидался github:mikhailnarzik-source/<репозиторий>' })
+            }
+            if (!/^[a-z0-9][a-z0-9-]{1,40}$/.test(packageName)) {
+              return json({ ok: false, message: 'укажи имя пакета плагина' })
+            }
+            const cli = cliPath()
+            if (cli === undefined) return json({ ok: false, message: 'CLI DeepSeek Harness не найден' })
+            const removed = await gitInDir(undefined, cli, ['plugin', '--profile', 'desktop', 'remove', packageName])
+            const added = await gitInDir(undefined, cli, ['plugin', '--profile', 'desktop', 'add', spec])
+            return json({
+              ok: added.ok,
+              message: added.ok ? 'обновлено — перезапусти DSH' : 'обновление не удалось',
+              output: (removed.output + '\n' + added.output).trim().slice(-1500),
+            })
+          }
+
           if (kind === 'open-folder') {
             if (target === undefined) return json({ ok: false, message: 'путь вне рабочей папки' })
             if (!existsSync(target)) return json({ ok: false, message: 'каталог не найден: ' + target })
