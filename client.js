@@ -310,12 +310,12 @@ window.__ModuleLoader__.load({
       '.dshc-action:disabled { opacity: .6; cursor: progress; }',
       '.dshc-split-main { border-top-right-radius: 0 !important; border-bottom-right-radius: 0 !important; }',
       '.dshc-chevron { border-top-left-radius: 0 !important; border-bottom-left-radius: 0 !important; border-left-color: rgba(106,139,208,0.25) !important; width: 28px; padding: 0 !important; margin-left: -8px; }',
-      '.dshc-menu { margin-top: 6px; align-self: flex-start; min-width: 236px; max-width: 320px; max-height: 320px; overflow-y: auto; padding: 4px; border-radius: 10px; border: 1px solid rgba(128,128,128,0.28); background: var(--dsw-alias-bg-base, #23252b); box-shadow: 0 12px 32px rgba(0,0,0,0.38); display: flex; flex-direction: column; gap: 1px; z-index: 30; }',
+      '.dshc-menu { display: flex; flex-direction: column; gap: 1px; border: 1px solid rgba(128,128,128,0.30); border-radius: 12px; background: rgba(30,31,36,0.98); box-shadow: 0 10px 28px rgba(0,0,0,0.35); }',
       '.dshc-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 10px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; font-size: 12.5px; font-weight: 400; text-align: left; cursor: pointer; white-space: nowrap; }',
       '.dshc-menu-item:hover { background: rgba(128,128,128,0.18); }',
       '.dshc-menu-item:active { background: rgba(128,128,128,0.26); }',
       '.dshc-menu-sep { height: 1px; margin: 3px 6px; background: rgba(128,128,128,0.28); }',
-      '.dshc-corner { position: absolute; right: 0; bottom: 0; display: inline-flex; align-items: center; gap: 3px; height: 24px; padding: 0 5px; border-radius: 6px; border: 1px solid rgba(128,128,128,0.35); background: rgba(128,128,128,0.14); color: inherit; cursor: pointer; }',
+      '.dshc-corner { margin-left: auto; display: inline-flex; align-items: center; justify-content: center; gap: 3px; height: 30px; width: 40px; padding: 0; border-radius: 8px; border: 1px solid rgba(128,128,128,0.35); background: rgba(128,128,128,0.14); color: inherit; cursor: pointer; }',
       '.dshc-corner:hover { background: rgba(128,128,128,0.24); }',
     ].join('\n')
 
@@ -530,6 +530,24 @@ window.__ModuleLoader__.load({
                     : action.label,
               )
             }),
+          actions.some((action) => action.kind === 'open-in-editor')
+            ? h(
+                'button',
+                {
+                  type: 'button',
+                  title: 'Открыть с помощью…',
+                  className: 'dshc-corner',
+                  onClick: () => {
+                    const action = actions.find((item) => item.kind === 'open-in-editor')
+                    if (action !== undefined) void openEditorMenu(action)
+                  },
+                },
+                state.appsData?.defaultApp?.icon
+                  ? h('img', { src: state.appsData.defaultApp.icon, width: 16, height: 16, alt: '', style: { width: 16, height: 16, borderRadius: 3 } })
+                  : h('span', { style: { fontSize: 13 } }, '📄'),
+                h('span', { style: { fontSize: 9, opacity: 0.8, lineHeight: 1 } }, '▾'),
+              )
+            : null,
           copyText === '' || actions.some((item) => item.kind === 'copy')
             ? null
             : h(
@@ -537,30 +555,12 @@ window.__ModuleLoader__.load({
                 { type: 'button', className: 'dshc-action', onClick: () => void copy() },
                 copied ? 'Скопировано' : 'Копировать команду',
               ),
-        actions.some((action) => action.kind === 'open-in-editor')
-          ? h(
-              'button',
-              {
-                type: 'button',
-                title: 'Открыть с помощью…',
-                className: 'dshc-corner',
-                onClick: () => {
-                  const action = actions.find((item) => item.kind === 'open-in-editor')
-                  if (action !== undefined) void openEditorMenu(action)
-                },
-              },
-              state.appsData?.defaultApp?.icon
-                ? h('img', { src: state.appsData.defaultApp.icon, width: 16, height: 16, alt: '', style: { width: 16, height: 16, borderRadius: 3 } })
-                : h('span', { style: { fontSize: 13 } }, '📄'),
-              h('span', { style: { fontSize: 9, opacity: 0.75, lineHeight: 1 } }, '▾'),
-            )
-          : null,
         state.editor !== null && state.editor !== undefined
           ? h(
               'div',
               {
                 className: 'dshc-menu',
-                style: { position: 'absolute', right: 0, bottom: 30, width: 300, maxHeight: 360, overflowY: 'auto', marginTop: 0, zIndex: 60 },
+                style: { position: 'absolute', right: 0, bottom: 38, width: 300, maxHeight: 380, overflowY: 'auto', marginTop: 0, padding: 6, borderRadius: 12, zIndex: 60 },
               },
               state.editor.defaultApp !== null && state.editor.defaultApp !== undefined
                 ? h(
@@ -597,7 +597,14 @@ window.__ModuleLoader__.load({
                   h('span', null, editor.name),
                 ),
               ),
-              ...(state.editor.apps ?? []).map((app) =>
+              ...(state.editor.apps ?? [])
+                .filter((app) => {
+                  const name = String(app.name ?? '').toLowerCase()
+                  if (name === '') return false
+                  if (name === String(state.editor.defaultApp?.name ?? '').toLowerCase()) return false
+                  return !(state.editor.editors ?? []).some((editor) => String(editor.name ?? '').toLowerCase() === name)
+                })
+                .map((app) =>
                 h(
                   'button',
                   {

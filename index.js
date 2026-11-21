@@ -349,12 +349,14 @@ async function appsForFile(filePath) {
     const items = Array.isArray(parsed) ? parsed : [parsed]
     const apps = []
     for (const item of items) {
-      if (item === null || typeof item !== 'object' || typeof item.path !== 'string') continue
-      const exePath = item.path
-      if (!existsSync(exePath)) continue
-      const base = (exePath.split(/[\\/]/).pop() ?? '').replace(/\.exe$/i, '').toLowerCase()
-      let name = typeof item.name === 'string' ? item.name.replace(/\.exe$/i, '').trim() : ''
-      if (name === '' || name.toLowerCase() === base) name = APP_NAMES[base] ?? base
+      if (item === null || typeof item !== 'object') continue
+      const command = typeof item.command === 'string' ? item.command.trim() : ''
+      const iconPath = typeof item.iconPath === 'string' ? item.iconPath.trim() : ''
+      let exePath = command.toLowerCase().endsWith('.exe') && existsSync(command) ? command : ''
+      if (exePath === '' && iconPath.toLowerCase().endsWith('.exe') && existsSync(iconPath)) exePath = iconPath
+      if (exePath === '') continue
+      const name = typeof item.name === 'string' ? item.name.trim() : ''
+      if (name === '') continue
       const icon = await editorIcon(exePath)
       apps.push({ path: exePath, name, icon })
     }

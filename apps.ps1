@@ -1,91 +1,110 @@
 param([string]$Extension)
 
-# Собирает приложения из системного списка «Открыть с помощью» для расширения.
+# Системный перечислитель ассоциаций Windows (SHAssocEnumHandlers) — тот же API,
+# что использует меню «Открыть с помощью» проводника.
 $ErrorActionPreference = 'SilentlyContinue'
-$list = New-Object System.Collections.ArrayList
-$seen = @{}
 
-function Resolve-AppPath([string]$candidate) {
-  if ([string]::IsNullOrWhiteSpace($candidate)) { return '' }
-  $value = $candidate.Trim().Trim('"')
-  if ($value -like '*%*') { $value = [Environment]::ExpandEnvironmentVariables($value) }
-  if ($value -match '^[a-zA-Z]:') {
-    if (Test-Path -LiteralPath $value) { return $value }
-  }
-  $command = Get-Command $value -ErrorAction SilentlyContinue | Select-Object -First 1
-  if ($command -ne $null -and $command.Source) { return $command.Source }
-  $appKey = "Registry::HKEY_CLASSES_ROOT\Applications\$value\shell\open\command"
-  if (Test-Path -LiteralPath $appKey) {
-    $cmd = (Get-ItemProperty -LiteralPath $appKey -ErrorAction SilentlyContinue).'(default)'
-    if ($cmd -match '"([^"]+\.exe)"') { return $matches[1] }
-    if ($cmd -match '^([^\s]+\.exe)') { return $matches[1] }
-  }
-  $appPathKey = "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\$value"
-  if (Test-Path -LiteralPath $appPathKey) {
-    $cmd = (Get-ItemProperty -LiteralPath $appPathKey -ErrorAction SilentlyContinue).'(default)'
-    if ($cmd) { return $cmd.Trim('"') }
-  }
-  return ''
-}
+$source = @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Text;
 
-function Add-App([string]$candidate) {
-  $path = Resolve-AppPath $candidate
-  if ($path -eq '') { return }
-  if (-not $path.ToLower().EndsWith('.exe')) { return }
-  if (-not (Test-Path -LiteralPath $path)) { return }
-  $key = $path.ToLower()
-  if ($seen.ContainsKey($key)) { return }
-  $seen[$key] = $true
-  $name = [System.IO.Path]::GetFileNameWithoutExtension($path)
-  try {
-    $info = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($path)
-    if (-not [string]::IsNullOrWhiteSpace($info.FileDescription)) { $name = $info.FileDescription }
-  } catch { }
-  [void]$list.Add([pscustomobject]@{ path = $path; name = $name })
-}
-
-# 1. Список «Открыть с помощью» в HKCR.
-$owKey = "Registry::HKEY_CLASSES_ROOT\$Extension\OpenWithList"
-if (Test-Path -LiteralPath $owKey) {
-  $item = Get-Item -LiteralPath $owKey
-  foreach ($prop in $item.Property) {
-    if ($prop -match '^[a-zA-Z]$') { Add-App ([string](Get-ItemProperty -LiteralPath $owKey).$prop) }
-  }
-}
-
-# 2. Список «Открыть с помощью» в профиле пользователя.
-$owUser = "Registry::HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$Extension\OpenWithList"
-if (Test-Path -LiteralPath $owUser) {
-  $item = Get-Item -LiteralPath $owUser
-  foreach ($prop in $item.Property) {
-    if ($prop -match '^[a-zA-Z]$') { Add-App ([string](Get-ItemProperty -LiteralPath $owUser).$prop) }
-  }
-}
-
-# 3. Приложения, объявившие поддержку этого расширения.
-foreach ($app in (Get-ChildItem -LiteralPath 'Registry::HKEY_CLASSES_ROOT\Applications' -ErrorAction SilentlyContinue)) {
-  $supported = (Get-ItemProperty -LiteralPath $app.PSPath -ErrorAction SilentlyContinue).SupportedTypes
-  if ($supported -ne $null -and ($supported -contains $Extension)) { Add-App $app.PSChildName }
-}
-
-# 4. ProgID, связанные с расширением.
-$progIdKey = "Registry::HKEY_CLASSES_ROOT\$Extension\OpenWithProgids"
-if (Test-Path -LiteralPath $progIdKey) {
-  $item = Get-Item -LiteralPath $progIdKey
-  foreach ($prop in $item.Property) {
-    $cmdKey = "Registry::HKEY_CLASSES_ROOT\$prop\shell\open\command"
-    if (Test-Path -LiteralPath $cmdKey) {
-      $cmd = (Get-ItemProperty -LiteralPath $cmdKey -ErrorAction SilentlyContinue).'(default)'
-      if ($cmd -match '"([^"]+\.exe)"') { Add-App $matches[1] }
+public static class AssocHandlers
+{
+    [ComImport, Guid("973810ae-9599-4b88-9e4d-6ee98c9552da"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IEnumAssocHandlers
+    {
+        [PreserveSig]
+        int Next(uint celt, out IntPtr rgelt, out uint pceltFetched);
+        [PreserveSig]
+        int Skip(uint celt);
+        [PreserveSig]
+        int Reset();
+        [PreserveSig]
+        int Clone(out IntPtr ppenum);
     }
-  }
-}
 
-# 5. Значение по умолчанию для расширения.
-$defaultKey = "Registry::HKEY_CLASSES_ROOT\$Extension\shell\open\command"
-if (Test-Path -LiteralPath $defaultKey) {
-  $cmd = (Get-ItemProperty -LiteralPath $defaultKey -ErrorAction SilentlyContinue).'(default)'
-  if ($cmd -match '"([^"]+\.exe)"') { Add-App $matches[1] }
-}
+    [ComImport, Guid("f04061ac-1659-4a3f-a954-775aa57fc083"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IAssocHandler
+    {
+        [PreserveSig]
+        int GetName([MarshalAs(UnmanagedType.LPWStr)] out string ppsz);
+        [PreserveSig]
+        int GetUIName([MarshalAs(UnmanagedType.LPWStr)] out string ppsz);
+        [PreserveSig]
+        int GetIconLocation([MarshalAs(UnmanagedType.LPWStr)] out string ppszPath, out int pIndex);
+        [PreserveSig]
+        int IsRecommended();
+        [PreserveSig]
+        int MakeDefault([MarshalAs(UnmanagedType.LPWStr)] string pszDescription);
+        [PreserveSig]
+        int Invoke(IntPtr pdo);
+    }
 
-$list | ConvertTo-Json -Compress
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+    private static extern void SHAssocEnumHandlers([MarshalAs(UnmanagedType.LPWStr)] string pszExtra, int filter, out IEnumAssocHandlers ppEnum);
+
+    private static string Quote(string value)
+    {
+        if (value == null) return "\"\"";
+        StringBuilder builder = new StringBuilder("\"");
+        foreach (char symbol in value)
+        {
+            if (symbol == '\\') builder.Append("\\\\");
+            else if (symbol == '"') builder.Append("\\\"");
+            else if (symbol == '\r' || symbol == '\n' || symbol == '\t') builder.Append(' ');
+            else builder.Append(symbol);
+        }
+        builder.Append('"');
+        return builder.ToString();
+    }
+
+    public static string Dump(string extension)
+    {
+        IEnumAssocHandlers enumerator = null;
+        try
+        {
+            SHAssocEnumHandlers(extension, 0, out enumerator);
+        }
+        catch
+        {
+            return "[]";
+        }
+        if (enumerator == null) return "[]";
+        List<string> rows = new List<string>();
+        HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (true)
+        {
+            IntPtr pointer;
+            uint fetched;
+            int hr = enumerator.Next(1, out pointer, out fetched);
+            if (hr != 0 || fetched == 0 || pointer == IntPtr.Zero) break;
+            object raw = null;
+            try { raw = Marshal.GetObjectForIUnknown(pointer); } catch { raw = null; }
+            IAssocHandler handler = raw as IAssocHandler;
+            if (handler == null) break;
+            string name = null;
+            string uiName = null;
+            string iconPath = null;
+            int iconIndex = 0;
+            if (handler.GetName(out name) != 0) name = null;
+            if (handler.GetUIName(out uiName) != 0) uiName = null;
+            if (handler.GetIconLocation(out iconPath, out iconIndex) != 0) iconPath = null;
+            string display = string.IsNullOrEmpty(uiName) ? name : uiName;
+            if (!string.IsNullOrEmpty(display) && seen.Add(display))
+            {
+                rows.Add("{\"name\":" + Quote(display) + ",\"command\":" + Quote(name ?? "") + ",\"iconPath\":" + Quote(iconPath ?? "") + ",\"iconIndex\":" + iconIndex + "}");
+            }
+        }
+        return "[" + string.Join(",", rows) + "]";
+    }
+}
+'@
+
+try {
+  Add-Type -TypeDefinition $source -Language CSharp -ErrorAction Stop
+  [AssocHandlers]::Dump($Extension)
+} catch {
+  Write-Output '[]'
+}
