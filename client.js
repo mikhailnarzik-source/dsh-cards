@@ -267,6 +267,7 @@ window.__ModuleLoader__.load({
     function CardActions({ actions }) {
       const [state, setState] = React.useState({ busy: '', note: '' })
       const [wrap, setWrap] = React.useState(true)
+      const [copied, setCopied] = React.useState(false)
       const ACTIONS_PATH = '/api/dsh-cards/action'
 
       const run = async (action) => {
@@ -287,9 +288,14 @@ window.__ModuleLoader__.load({
 
       const copy = () => {
         const command = actions.map((item) => item.command ?? '').filter((line) => line !== '').join('\n')
+        const confirm = () => {
+          setCopied(true)
+          setState({ busy: '', note: 'команда скопирована' })
+          setTimeout(() => setCopied(false), 1600)
+        }
         try {
           void navigator.clipboard.writeText(command)
-          setState({ busy: '', note: 'команда скопирована' })
+          confirm()
         } catch {
           setState({ busy: '', note: command })
         }
@@ -318,7 +324,7 @@ window.__ModuleLoader__.load({
           h(
             'button',
             { type: 'button', className: 'dshc-action', onClick: copy },
-            'Копировать команду',
+            copied ? 'Скопировано' : 'Копировать команду',
           ),
           h(
             'button',
