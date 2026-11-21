@@ -178,7 +178,7 @@ window.__ModuleLoader__.load({
     }
 
     /** Сама карточка: используется и в предпросмотре, и в ответе ассистента. */
-    function CardView({ card, actions }) {
+    function CardView({ card, actions, copyText }) {
       return h(
         'div',
         {
@@ -225,7 +225,7 @@ window.__ModuleLoader__.load({
             )
           : null,
         card.note !== '' ? h('span', { style: { fontSize: 12, opacity: 0.7 } }, card.note) : null,
-        Array.isArray(actions) && actions.length > 0 ? h(CardActions, { actions }) : null,
+        Array.isArray(actions) && actions.length > 0 ? h(CardActions, { actions, copyText }) : null,
 )
     }
 
@@ -264,7 +264,7 @@ window.__ModuleLoader__.load({
     ].join('\n')
 
     /** Кнопки действий карточки: одинаковый вид, переключатель переноса строк. */
-    function CardActions({ actions }) {
+    function CardActions({ actions, copyText }) {
       const [state, setState] = React.useState({ busy: '', note: '' })
       const [wrap, setWrap] = React.useState(true)
       const [copied, setCopied] = React.useState(false)
@@ -287,7 +287,7 @@ window.__ModuleLoader__.load({
       }
 
       const copy = () => {
-        const command = actions.map((item) => item.command ?? '').filter((line) => line !== '').join('\n')
+        const command = typeof copyText === 'string' && copyText !== '' ? copyText : actions.map((item) => item.command ?? '').filter((line) => line !== '').join('\n')
         const confirm = () => {
           setCopied(true)
           setState({ busy: '', note: 'команда скопирована' })
@@ -347,26 +347,50 @@ window.__ModuleLoader__.load({
       const content = props?.content ?? props?.code ?? props?.text ?? props?.value ?? ''
       const parsed = parseCard(String(content))
       if (!parsed.ok) return null
-      // Действия карточки: только известные виды, выполняет host-часть.
-      let actions = []
+      // Что можно сделать с карточкой — выводим из содержимого.
+      let raw = {}
       try {
-        const raw = JSON.parse(String(content))
-        if (Array.isArray(raw?.actions)) {
-          actions = raw.actions
-            .filter((item) => item !== null && typeof item === 'object' && typeof item.label === 'string')
-            .slice(0, 4)
-            .map((item) => ({
-              label: item.label,
-              kind: typeof item.kind === 'string' ? item.kind : '',
-              target: typeof item.target === 'string' ? item.target : '',
-              command: typeof item.command === 'string' ? item.command : '',
-              plugin: typeof item.plugin === 'string' ? item.plugin : '',
-            }))
-        }
+        raw = JSON.parse(String(content)) ?? {}
       } catch {
-        actions = []
+        raw = {}
       }
-      return h(CardView, { card: parsed.card, actions })
+
+      const actions = []
+      if (typeof raw.repo === 'string' && raw.repo !== '') {
+        actions.push({ label: 'Опубликовать', kind: 'git-push', target: raw.repo })
+      }
+      if (typeof raw.folder === 'string' && raw.folder !== '') {
+        actions.push({ label: 'Открыть в папке', kind: 'open-folder', target: raw.folder })
+      }
+      for (const item of Array.isArray(raw.actions) ? raw.actions : []) {
+        if (item !== null && typeof item === 'object' && typeof item.label === 'string') {
+          actions.push({
+            label: item.label,
+            kind: typeof item.kind === 'string' ? item.kind : '',
+            target: typeof item.target === 'string' ? item.target : '',
+            plugin: typeof item.plugin === 'string' ? item.plugin : '',
+            command: typeof item.command === 'string' ? item.command : '',
+          })
+        }
+      }
+
+      // Текст для копирования: код, команды или выведенные команды действий.
+      const copyLines = []
+      if (typeof raw.code === 'string' && raw.code.trim() !== '') copyLines.push(raw.code.trim())
+      if (typeof raw.command === 'string' && raw.command.trim() !== '') copyLines.push(raw.command.trim())
+      if (Array.isArray(raw.commands)) {
+        for (const line of raw.commands) if (typeof line === 'string' && line.trim() !== '') copyLines.push(line.trim())
+      }
+      for (const action of actions) {
+        if (action.command !== '') { copyLines.push(action.command); continue }
+        if (action.kind === 'git-push') copyLines.push('git -C "' + action.target + '" push origin main')
+        if (action.kind === 'open-folder') copyLines.push('explorer "' + action.target.replace(/\//g, '\\') + '"')
+        if (action.kind === 'run-tests') copyLines.push('cd "' + action.target + '" && node --test')
+        if (action.kind === 'dsh-plugin-update') copyLines.push('dsh plugin --profile desktop remove ' + action.plugin + ' && dsh plugin add ' + action.target)
+      }
+      const copyText = copyLines.join('\n')
+
+      return h(CardView, { card: parsed.card, actions, copyText })
     }
 
     const EXAMPLE = JSON.stringify(
