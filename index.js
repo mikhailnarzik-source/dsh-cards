@@ -230,6 +230,69 @@ function editorAvailable(editor) {
   })
 }
 
+/** Путь к настоящему .exe для редактора (обёртки .cmd разворачиваем). */
+async function editorExe(editor) {
+  const launch = editor.launch
+  if (typeof launch !== 'string' || launch === '') return ''
+  if (launch.toLowerCase().endsWith('.exe') && existsSync(launch)) return launch
+  return new Promise((resolveExe) => {
+    const probe = launch.replace(/\.(cmd|bat)$/i, '')
+    execFile(process.env.ComSpec ?? 'cmd.exe', ['/c', 'where', probe], { windowsHide: true, timeout: 8000 }, (error, stdout) => {
+      if (error !== null) { resolveExe(''); return }
+      const first = String(stdout ?? '').split(/\r?\n/)[0]?.trim() ?? ''
+      if (first === '') { resolveExe(''); return }
+      if (first.toLowerCase().endsWith('.exe')) { resolveExe(first); return }
+      // Обёртка .cmd: ищем .exe рядом или на уровень выше.
+      const dir = dirname(first)
+      const search = (folder, depth) => {
+        if (depth < 0) return ''
+        let entries = []
+        try { entries = readdirSync(folder) } catch { return '' }
+        const exe = entries.find((name) => name.toLowerCase().endsWith('.exe'))
+        if (exe !== undefined) return join(folder, exe)
+        return search(dirname(folder), depth - 1)
+      }
+      const found = search(dir, 2)
+      if (found !== '') { resolveExe(found); return }
+      // Известные места установки: обёртка может лежать отдельно от .exe.
+      const known = {
+        code: [join(process.env.LOCALAPPDATA ?? '', 'Programs', 'Microsoft VS Code', 'Code.exe'), join(process.env.ProgramFiles ?? '', 'Microsoft VS Code', 'Code.exe')],
+        cursor: [join(process.env.LOCALAPPDATA ?? '', 'Programs', 'cursor', 'Cursor.exe')],
+        'notepad++': [join(process.env.ProgramFiles ?? '', 'Notepad++', 'notepad++.exe')],
+        subl: [join(process.env.ProgramFiles ?? '', 'Sublime Text', 'sublime_text.exe')],
+      }
+      const candidates = known[probe.toLowerCase()] ?? []
+      resolveExe(candidates.find((candidate) => existsSync(candidate)) ?? '')
+    })
+  })
+}
+
+/** PNG-иконка приложения в виде data URL. */
+const iconCache = new Map()
+async function editorIcon(exePath) {
+  if (exePath === '' || !existsSync(exePath)) return ''
+  const cached = iconCache.get(exePath)
+  if (cached !== undefined) return cached
+  const script = [
+    'Add-Type -AssemblyName System.Drawing',
+    "$icon = [System.Drawing.Icon]::ExtractAssociatedIcon('" + exePath.replace(/'/g, "''") + "')",
+    "if ($icon -eq $null) { return }",
+    '$bitmap = $icon.ToBitmap()',
+    '$stream = New-Object System.IO.MemoryStream',
+    '$bitmap.Save($stream, [System.Drawing.Imaging.ImageFormat]::Png)',
+    '[Convert]::ToBase64String($stream.ToArray())',
+  ].join(String.fromCharCode(10))
+  const icon = await new Promise((resolveIcon) => {
+    execFile('powershell.exe', ['-NoProfile', '-Command', script], { windowsHide: true, timeout: 20000 }, (error, stdout) => {
+      if (error !== null) { resolveIcon(''); return }
+      const base64 = String(stdout ?? '').trim()
+      resolveIcon(base64 === '' ? '' : 'data:image/png;base64,' + base64)
+    })
+  })
+  iconCache.set(exePath, icon)
+  return icon
+}
+
 /** Список установленных редакторов. */
 async function detectEditors() {
   scanEditorFolders()
@@ -501,6 +564,11 @@ export function apply(ctx) {
 
           if (kind === 'list-editors') {
             const editors = await detectEditors()
+            for (const editor of editors) {
+              const exePath = await editorExe(editor)
+              editor.icon = await editorIcon(exePath)
+              editor.default = editor.id === 'notepad'
+            }
             const last = editors.find((editor) => editor.id === lastEditorId) ?? null
             return json({ ok: true, editors, last })
           }

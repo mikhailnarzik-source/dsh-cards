@@ -368,6 +368,32 @@ window.__ModuleLoader__.load({
         return () => { cancelled = true }
       }, [])
 
+      /** Открыть меню выбора приложения для файла. */
+      const openEditorMenu = async (action) => {
+        if (state.editor !== null && state.editor !== undefined && state.editor.action?.label === action.label) {
+          setState((previous) => ({ ...(previous ?? {}), editor: null }))
+          return
+        }
+        setState((previous) => ({ ...(previous ?? {}), busy: action.label }))
+        try {
+          const response = await fetch(ACTIONS_PATH, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ kind: 'list-editors' }),
+          })
+          const data = await response.json()
+          const editors = Array.isArray(data?.editors) ? data.editors : []
+          if (editors.length === 0) {
+            setState((previous) => ({ ...(previous ?? {}), busy: '', error: 'приложения не найдены' }))
+            return
+          }
+          setState((previous) => ({ ...(previous ?? {}), busy: '', editor: { action, editors } }))
+        } catch {
+          setState((previous) => ({ ...(previous ?? {}), busy: '', error: 'список приложений недоступен' }))
+        }
+      }
+
       const run = async (action) => {
         setState({ busy: action.label, note: '' })
         if (action.kind === 'copy') {
@@ -384,34 +410,10 @@ window.__ModuleLoader__.load({
           if (copied) setTimeout(() => setCopied(false), 1600)
           return
         }
-        // «Открыть в редакторе»: список показываем всегда, но последний выбор —
-        // первым в списке, чтобы не искать его каждый раз.
+        // «Открыть с помощью»: показываем меню как в Windows.
         if (action.kind === 'open-in-editor') {
-          try {
-            const response = await fetch(ACTIONS_PATH, {
-              method: 'POST',
-              credentials: 'same-origin',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ kind: 'list-editors' }),
-            })
-            const data = await response.json()
-            const editors = Array.isArray(data?.editors) ? data.editors : []
-            const remembered = data?.last ?? null
-            if (remembered !== null && remembered !== undefined) {
-              setLastEditor(remembered)
-            }
-            if (editors.length === 0) {
-              setState((previous) => ({ ...(previous ?? {}), busy: '', note: '', error: 'редакторы не найдены' }))
-              return
-            }
-            const ordered = remembered === null || remembered === undefined
-              ? editors
-              : [...editors.filter((editor) => editor.id === remembered.id), ...editors.filter((editor) => editor.id !== remembered.id)]
-            setState((previous) => ({ ...(previous ?? {}), busy: '', note: '', editor: { action, editors: ordered, last: remembered } }))
-            return
-          } catch {
-            // ниже обычная попытка открыть
-          }
+          await openEditorMenu(action)
+          return
         }
         try {
           const response = await fetch(ACTIONS_PATH, {
@@ -489,7 +491,7 @@ window.__ModuleLoader__.load({
                 type: 'button',
                 className: 'dshc-action',
                 disabled: state.busy !== '',
-                onClick: () => void run(action),
+                onClick: () => (action.kind === 'open-in-editor' ? void openEditorMenu(action) : void run(action)),
                 style:
                   COLORED_KINDS.includes(action.kind) && results[action.label] === true
                     ? { background: 'rgba(47,158,68,0.45)', borderColor: 'rgba(47,158,68,0.95)', cursor: 'default' }
@@ -501,7 +503,9 @@ window.__ModuleLoader__.load({
                 ? 'выполняю…'
                 : COLORED_KINDS.includes(action.kind) && results[action.label] === true
                   ? action.label + ' снова'
-                  : action.label,
+                  : action.kind === 'open-in-editor'
+                    ? action.label + (state.editor?.action?.label === action.label ? ' ▴' : ' ▾')
+                    : action.label,
             ),
           ),
           copyText === '' || actions.some((item) => item.kind === 'copy')
@@ -514,35 +518,66 @@ window.__ModuleLoader__.load({
         state.editor !== null && state.editor !== undefined
           ? h(
               'div',
-              { style: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 4 } },
-              h('span', { style: { fontSize: 12, opacity: 0.75 } }, 'Открыть в:'),
+              {
+                style: {
+                  alignSelf: 'flex-start',
+                  minWidth: 240,
+                  maxWidth: 340,
+                  maxHeight: 320,
+                  overflowY: 'auto',
+                  padding: 4,
+                  borderRadius: 10,
+                  border: '1px solid rgba(128,128,128,0.28)',
+                  background: 'var(--dsw-alias-bg-base, #23252b)',
+                  boxShadow: '0 12px 32px rgba(0,0,0,0.38)',
+                  zIndex: 30,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 1,
+                },
+              },
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dshc-menu-item',
+                  onClick: async () => {
+                    const opened = await sendAction({ kind: 'open-file', target: state.editor.action.target })
+                    setState((previous) => ({ ...(previous ?? {}), editor: null, error: opened ? '' : 'не удалось открыть файл' }))
+                  },
+                },
+                h('span', { style: { width: 18, textAlign: 'center', opacity: 0.75 } }, '▸'),
+                h('span', null, 'Открыть (по умолчанию)'),
+              ),
               ...(state.editor.editors ?? []).map((editor) =>
                 h(
                   'button',
                   {
                     key: editor.id,
                     type: 'button',
-                    className: 'dshc-action',
+                    className: 'dshc-menu-item',
                     onClick: async () => {
                       const opened = await sendAction({ ...state.editor.action, editor: editor.id })
                       setState((previous) => ({
                         ...(previous ?? {}),
-                        busy: '',
-                        note: '',
                         editor: null,
                         result: { ...((previous ?? {}).result ?? {}), [state.editor.action.label]: opened },
                         error: opened ? '' : 'не удалось открыть в ' + editor.name,
                       }))
                     },
                   },
-                  editor.id === state.editor.last?.id ? editor.name + ' (прошлый выбор)' : editor.name,
+                  typeof editor.icon === 'string' && editor.icon !== ''
+                    ? h('img', { src: editor.icon, width: 18, height: 18, alt: '', style: { width: 18, height: 18, borderRadius: 3 } })
+                    : h('span', { style: { width: 18, textAlign: 'center', opacity: 0.75 } }, '▸'),
+                  h('span', null, editor.default === true ? editor.name + ' (по умолчанию)' : editor.name),
                 ),
               ),
+              h('div', { style: { height: 1, margin: '3px 6px', background: 'rgba(128,128,128,0.28)' } }),
               h(
                 'button',
                 {
                   type: 'button',
-                  className: 'dshc-action',
+                  className: 'dshc-menu-item',
                   onClick: async () => {
                     const chosen = await sendAction({ kind: 'pick-editor' })
                     if (chosen === false) {
@@ -550,15 +585,26 @@ window.__ModuleLoader__.load({
                       return
                     }
                     const opened = await sendAction({ ...state.editor.action })
-                    setState((previous) => ({ ...(previous ?? {}), editor: null, note: '', error: opened ? '' : 'не удалось открыть выбранной программой' }))
+                    setState((previous) => ({ ...(previous ?? {}), editor: null, error: opened ? '' : 'не удалось открыть выбранной программой' }))
                   },
                 },
-                'Указать программу…',
+                h('span', { style: { width: 18, textAlign: 'center', opacity: 0.75 } }, '…'),
+                h('span', null, 'Указать программу…'),
               ),
               h(
                 'button',
-                { type: 'button', className: 'dshc-action', onClick: () => setState((previous) => ({ ...(previous ?? {}), editor: null })) },
-                'Отмена',
+                {
+                  type: 'button',
+                  className: 'dshc-menu-item',
+                  onClick: async () => {
+                    const target = String(state.editor.action.target ?? '')
+                    const folder = target.replaceAll('/', '\\').split('\\').slice(0, -1).join('/')
+                    const opened = await sendAction({ kind: 'open-folder', target: folder })
+                    setState((previous) => ({ ...(previous ?? {}), editor: null, error: opened ? '' : 'не удалось показать папку' }))
+                  },
+                },
+                h('span', { style: { width: 18, textAlign: 'center', opacity: 0.75 } }, '📁'),
+                h('span', null, 'Показать в папке'),
               ),
             )
           : null,
@@ -600,16 +646,7 @@ window.__ModuleLoader__.load({
         const name = baseName(raw.file)
         actions.push({ label: 'Открыть файл', kind: 'open-file', target: raw.file })
         actions.push({ label: 'Сохранить как…', kind: 'save-as', target: raw.file })
-        const editorNames = { vscode: 'VS Code', cursor: 'Cursor', sublime: 'Sublime Text', notepadpp: 'Notepad++', notepad: 'Блокнот' }
-        const wantedEditor = typeof raw.editor === 'string' ? raw.editor : ''
-        actions.push({
-          label: wantedEditor !== '' && wantedEditor !== 'auto'
-            ? 'Открыть в ' + (editorNames[wantedEditor] ?? wantedEditor)
-            : 'Открыть в редакторе',
-          kind: 'open-in-editor',
-          target: raw.file,
-          editor: wantedEditor === 'auto' ? '' : wantedEditor,
-        })
+        actions.push({ label: 'Открыть с помощью', kind: 'open-in-editor', target: raw.file })
       }
       if (typeof raw.url === 'string' && raw.url !== '') {
         let host = raw.url
