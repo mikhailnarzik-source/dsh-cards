@@ -388,7 +388,7 @@ window.__ModuleLoader__.load({
               state.busy === action.label ? 'выполняю…' : action.label,
             ),
           ),
-          actions.some((item) => item.kind === 'copy')
+          copyText === '' || actions.some((item) => item.kind === 'copy')
             ? null
             : h(
                 'button',
