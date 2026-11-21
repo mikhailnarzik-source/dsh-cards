@@ -134,8 +134,11 @@ export function apply(ctx) {
 
           if (kind === 'open-folder') {
             if (target === undefined) return json({ ok: false, message: 'путь вне рабочей папки' })
-            execFile('explorer', [target], { windowsHide: true }, () => {})
-            return json({ ok: true, message: 'открыто', target })
+            if (!existsSync(target)) return json({ ok: false, message: 'каталог не найден: ' + target })
+            // Проводник Windows понимает только обратные слэши.
+            const windowsPath = target.replace(/\//g, '\\')
+            execFile('explorer.exe', [windowsPath], { windowsHide: false }, () => {})
+            return json({ ok: true, message: 'открываю: ' + windowsPath, target: windowsPath })
           }
 
           return json({ ok: false, message: 'неизвестное действие: ' + kind })

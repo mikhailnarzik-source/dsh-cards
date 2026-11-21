@@ -230,6 +230,61 @@ window.__ModuleLoader__.load({
     }
 
     /** Рендерер блока кода ```dsh-card. */
+    /** Стили кнопок действий: заливка, наведение, один ряд. */
+    const ACTION_STYLES = [
+      '.dshc-actions {',
+      '  display: flex;',
+      '  align-items: center;',
+      '  gap: 8px;',
+      '  flex-wrap: nowrap;',
+      '  margin-top: 12px;',
+      '}',
+      '.dshc-action {',
+      '  flex: 0 0 auto;',
+      '  display: inline-flex;',
+      '  align-items: center;',
+      '  gap: 6px;',
+      '  height: 30px;',
+      '  padding: 0 14px;',
+      '  border-radius: 8px;',
+      '  border: 1px solid rgba(128,128,128,0.35);',
+      '  background: rgba(128,128,128,0.14);',
+      '  color: inherit;',
+      '  font: inherit;',
+      '  font-size: 12.5px;',
+      '  font-weight: 600;',
+      '  cursor: pointer;',
+      '  transition: background .14s ease, border-color .14s ease, transform .08s ease;',
+      '}',
+      '.dshc-action:hover:not(:disabled) {',
+      '  background: rgba(106,139,208,0.28);',
+      '  border-color: rgba(106,139,208,0.65);',
+      '}',
+      '.dshc-action:active:not(:disabled) { transform: translateY(1px); }',
+      '.dshc-action:disabled { opacity: .6; cursor: progress; }',
+      '.dshc-action--primary {',
+      '  background: rgba(106,139,208,0.42);',
+      '  border-color: rgba(106,139,208,0.8);',
+      '  color: #fff;',
+      '}',
+      '.dshc-action--primary:hover:not(:disabled) { background: rgba(106,139,208,0.62); }',
+      '.dshc-copy {',
+      '  flex: 0 0 auto;',
+      '  height: 30px;',
+      '  padding: 0 12px;',
+      '  border-radius: 8px;',
+      '  border: 1px dashed rgba(128,128,128,0.45);',
+      '  background: transparent;',
+      '  color: inherit;',
+      '  font: inherit;',
+      '  font-size: 12px;',
+      '  opacity: 0.8;',
+      '  cursor: pointer;',
+      '  transition: background .14s ease, border-color .14s ease;',
+      '}',
+      '.dshc-copy:hover { background: rgba(128,128,128,0.16); border-color: rgba(128,128,128,0.7); }',
+    ].join('\n')
+
     /** Кнопки действий карточки: запускают понятную host-часть. */
     function CardActions({ actions }) {
       const [state, setState] = React.useState({ busy: '', note: '' })
@@ -253,61 +308,41 @@ window.__ModuleLoader__.load({
 
       return h(
         'div',
-        { style: { display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10 } },
+        { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+        h('style', null, ACTION_STYLES),
         h(
           'div',
-          { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
+          { className: 'dshc-actions' },
           ...actions.map((action) =>
             h(
               'button',
               {
                 key: action.label,
                 type: 'button',
-                className: 'dshc-action',
+                className: action.kind === 'git-push' || action.kind === 'dsh-plugin-add' ? 'dshc-action dshc-action--primary' : 'dshc-action',
                 disabled: state.busy !== '',
                 onClick: () => void run(action),
-                style: {
-                  padding: '5px 12px',
-                  borderRadius: 8,
-                  border: '1px solid rgba(128,128,128,0.35)',
-                  background: action.kind === 'git-push' ? 'rgba(106,139,208,0.2)' : 'rgba(128,128,128,0.1)',
-                  color: 'inherit',
-                  font: 'inherit',
-                  fontSize: 12,
-                  cursor: state.busy === '' ? 'pointer' : 'progress',
-                },
               },
               state.busy === action.label ? 'выполняю…' : action.label,
             ),
           ),
-        ),
-        h(
-          'button',
-          {
-            type: 'button',
-            style: {
-              alignSelf: 'flex-start',
-              padding: '4px 10px',
-              borderRadius: 8,
-              border: '1px dashed rgba(128,128,128,0.35)',
-              background: 'transparent',
-              color: 'inherit',
-              font: 'inherit',
-              fontSize: 11.5,
-              opacity: 0.75,
-              cursor: 'pointer',
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'dshc-copy',
+              onClick: () => {
+                const command = actions.map((item) => item.command ?? '').filter((line) => line !== '').join('\n')
+                try {
+                  void navigator.clipboard.writeText(command)
+                  setState({ busy: '', note: 'команда скопирована' })
+                } catch {
+                  setState({ busy: '', note: command })
+                }
+              },
             },
-            onClick: () => {
-              const command = actions.map((item) => item.command ?? '').filter((line) => line !== '').join('\n')
-              try {
-                void navigator.clipboard.writeText(command)
-                setState({ busy: '', note: 'команда скопирована' })
-              } catch {
-                setState({ busy: '', note: command })
-              }
-            },
-          },
-          'Копировать команду',
+            'Копировать команду',
+          ),
         ),
         state.note !== '' ? h('span', { style: { fontSize: 11.5, opacity: 0.75 } }, state.note) : null,
       )
