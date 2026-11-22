@@ -1,7 +1,9 @@
 /**
  * Browser half of `dsh-cards`.
  *
- * Два места:
+ * Три места:
+ *  - панель в левой меню (`main` + `sidebar.panellist`, ключ `plugin-cards`):
+ *    та же страница настроек без страницы плагин-менеджера;
  *  - страница плагина: формат блока и живой предпросмотр в едином стиле;
  *  - отрисовка блока ```dsh-card в ответах ассистента.
  *
@@ -18,6 +20,23 @@ window.__ModuleLoader__.load({
 
     const NS = 'dshCards'
     const LANGUAGE = 'dsh-card'
+    /**
+     * Панель в левой панели: ключ `main` и id строки `sidebar.panellist`
+     * совпадают (`plugin-cards`) — хост открывает страницу по этому id.
+     * `PANEL_ORDER` — позиция в общем списке панелей «Оформления интерфейса»
+     * (20 + индекс: карточки 0, сжатие 1, ревью 2, …).
+     */
+    const PANEL_ID = 'plugin-cards'
+    const PANEL_EMOJI = '🧩'
+    const PANEL_ORDER = 20
+    /**
+     * id плагина в состоянии видимости панелей: его ведёт «Оформление
+     * интерфейса» (`dsh-polish`) в localStorage. Пока состояния нет или оно
+     * битое, панель считаем закреплённой — так же, как в настройках оформления.
+     */
+    const PANEL_STATE_ID = 'cards'
+    const PANEL_STATE_KEY = 'dsh-polish:panel-visibility'
+    const PANELS_CHANGED_EVENT = 'dsh-polish:panels-changed'
 
     // Тона карточки — только токены темы DSH: полоса слева подстраивается под тему.
     const TONES = {
@@ -29,6 +48,7 @@ window.__ModuleLoader__.load({
 
     const en = {
       title: 'Cards',
+      panelSubtitle: 'Block format and a live preview.',
       heading: 'Cards in answers',
       hint: 'Скопируйте пример ниже и вставьте его в сообщение ассистенту или в свой ответ — блок превратится в карточку.',
       example: 'Example',
@@ -45,6 +65,7 @@ window.__ModuleLoader__.load({
     }
     const ru = {
       title: 'Карточки',
+      panelSubtitle: 'Формат блока и живой предпросмотр.',
       heading: 'Карточки в ответах',
       hint: 'Скопируйте пример ниже и вставьте его в сообщение ассистенту или в свой ответ — блок превратится в карточку.',
       example: 'Пример',
@@ -137,6 +158,7 @@ window.__ModuleLoader__.load({
         lineHeight: 1.55,
         color: 'var(--dsw-alias-label-primary)',
       },
+      body: { display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 },
       head: { display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' },
       icon: {
         boxSizing: 'border-box',
@@ -988,7 +1010,13 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function CardsCard() {
+    /**
+     * Страница настроек: на странице плагина рисует себя целиком (шапка, карточки),
+     * а в панели левого меню — только содержимое (`bare`), потому что шапку и
+     * отступы даёт `CardsPanelPage`.
+     */
+    function CardsCard(props) {
+      const bare = props?.bare === true
       const t = (key) => translate(key)
       const [open, setOpen] = React.useState(true)
       const [text, setText] = React.useState(EXAMPLE)
@@ -1008,24 +1036,26 @@ window.__ModuleLoader__.load({
         }
       }
 
-      const blocks = [
-        h('style', { key: 'page-css' }, PAGE_CSS),
-        h(PageHeader, {
-          key: 'page-head',
-          icon: '🧩',
-          title: t('heading'),
-          subtitle: t('hint'),
-          chipLabel: parsed.ok ? t('statusReady') : t('statusBroken'),
-          chipTone,
-          refreshLabel: t('refresh'),
-          onRefresh: () => {
-            setText(EXAMPLE)
-            setNotice('')
-          },
-          open,
-          onToggle: () => setOpen(!open),
-        }),
-      ]
+      const blocks = bare
+        ? []
+        : [
+            h('style', { key: 'page-css' }, PAGE_CSS),
+            h(PageHeader, {
+              key: 'page-head',
+              icon: '🧩',
+              title: t('heading'),
+              subtitle: t('hint'),
+              chipLabel: parsed.ok ? t('statusReady') : t('statusBroken'),
+              chipTone,
+              refreshLabel: t('refresh'),
+              onRefresh: () => {
+                setText(EXAMPLE)
+                setNotice('')
+              },
+              open,
+              onToggle: () => setOpen(!open),
+            }),
+          ]
 
       if (open) {
         blocks.push(
@@ -1076,7 +1106,140 @@ window.__ModuleLoader__.load({
         )
       }
 
-      return h('div', { className: 'dshc-page', style: UI.page }, blocks)
+      return h(
+        'div',
+        bare
+          ? { className: 'dshc-page-body', style: UI.body }
+          : { className: 'dshc-page', style: UI.page },
+        blocks,
+      )
+    }
+
+    /** Заголовок панели: эмодзи-иконка, название плагина и короткий подзаголовок. */
+    function PanelHeader() {
+      return h(
+        'div',
+        { className: 'dshc-panel-head', style: UI.head },
+        h('span', { style: UI.icon, 'aria-hidden': 'true' }, PANEL_EMOJI),
+        h(
+          'div',
+          { style: UI.headText },
+          h('h1', { style: UI.title }, translate('title')),
+          h('p', { style: UI.subtitle }, translate('panelSubtitle')),
+        ),
+      )
+    }
+
+    /**
+     * Главная панель плагина: та же страница настроек в центрированной колонке
+     * (maxWidth 960), но без страницы плагин-менеджера — только шапка плагина и
+     * его элементы управления.
+     */
+    function CardsPanelPage() {
+      return h(
+        'section',
+        { className: 'dshc-page', style: UI.page, 'aria-label': translate('title'), 'data-dsh-panel': PANEL_ID },
+        h('style', { key: 'page-css' }, PAGE_CSS),
+        h(PanelHeader, { key: 'panel-head' }),
+        h(CardsCard, { key: 'settings', bare: true }),
+      )
+    }
+
+    /** Иконка строки левой панели: эмодзи в размер, который просит хост. */
+    function PanelIcon(props) {
+      const requested = Number(props?.size)
+      const size = Number.isFinite(requested) && requested > 0 ? requested : 16
+      return h(
+        'span',
+        {
+          'data-dsh-panel-icon': PANEL_STATE_ID,
+          'aria-hidden': true,
+          style: {
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: size,
+            height: size,
+            fontSize: Math.round(size * 0.95),
+            lineHeight: 1,
+          },
+        },
+        PANEL_EMOJI,
+      )
+    }
+
+    /** Закреплена ли панель: состояние ведёт «Оформление интерфейса» (dsh-polish). */
+    function isPanelPinned() {
+      try {
+        if (typeof localStorage === 'undefined' || localStorage === null) return true
+        const raw = localStorage.getItem(PANEL_STATE_KEY)
+        // Пока оформление не сохраняло состояние, все панели видны и закреплены.
+        if (raw === null || raw === '') return true
+        const state = JSON.parse(raw)
+        if (!Array.isArray(state?.pinned)) return true
+        return state.pinned.includes(PANEL_STATE_ID) || state.pinned.includes(PANEL_ID)
+      } catch {
+        return true
+      }
+    }
+
+    /**
+     * Панель в левой панели: `main` регистрируется всегда (она есть и в меню
+     * «Ещё»), строка `sidebar.panellist` — только когда панель закреплена.
+     * Событие `dsh-polish:panels-changed` приходит из «Оформления интерфейса»
+     * после закрепления/открепления: перечитываем состояние и перерегистрируем
+     * строку, сняв прошлую регистрацию.
+     */
+    function registerPanels(ctx) {
+      try {
+        ctx.slots.inject('main', () =>
+          ctx.slots.register({ name: 'main', key: PANEL_ID }, CardsPanelPage),
+        )
+      } catch (error) {
+        console.error('[dsh-cards] панель в левом меню недоступна:', error)
+      }
+
+      let disposeSidebar = null
+      const syncSidebar = () => {
+        if (typeof disposeSidebar === 'function') {
+          try {
+            disposeSidebar()
+          } catch (error) {
+            console.error('[dsh-cards] не удалось снять строку левой панели:', error)
+          }
+          disposeSidebar = null
+        }
+        if (!isPanelPinned()) return
+        try {
+          let dispose = null
+          const outer = ctx.slots.inject('sidebar.panellist', () => {
+            dispose = ctx.slots.register(
+              {
+                name: 'sidebar.panellist',
+                id: PANEL_ID,
+                order: PANEL_ORDER,
+                label: () => translate('title'),
+                locale: NS,
+              },
+              PanelIcon,
+            )
+            return dispose
+          })
+          disposeSidebar = typeof dispose === 'function' ? dispose : outer
+        } catch (error) {
+          disposeSidebar = null
+          console.error('[dsh-cards] строка в левой панели недоступна:', error)
+        }
+      }
+      syncSidebar()
+
+      try {
+        if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+          window.addEventListener(PANELS_CHANGED_EVENT, syncSidebar)
+        }
+      } catch (error) {
+        console.error('[dsh-cards] событие панелей недоступно:', error)
+      }
     }
 
     /** Большой предпросмотр с редактором — только на странице своего плагина. */
@@ -1095,6 +1258,9 @@ window.__ModuleLoader__.load({
     function apply(ctx) {
       ctx.locale.register(NS, { en, ru })
       translate = ctx.locale.bind(NS)
+
+      // Панель в левом меню: main — всегда, строка sidebar — только если закреплена.
+      registerPanels(ctx)
 
       try {
         // Подробный предпросмотр — только на странице своего плагина.
