@@ -296,7 +296,7 @@ test('адаптив: сетка auto-fit, перенос кнопок и дли
   assert.match(SOURCE, /overflowWrap: 'anywhere'/, 'у подсказок есть overflow-wrap:anywhere')
 
   const css = pageCss(nodes)
-  assert.match(css, /\.dshc-page\{overflow-wrap:anywhere;\}/)
+  assert.match(css, /\.dshc-page\{overflow-wrap:anywhere;[^}]*overflow-y:auto[^}]*\}/, 'корень страницы прокручивается')
   assert.match(css, /\.dshc-page-actions\{[^}]*flex-wrap:wrap/)
   assert.match(css, /\.dshc-page-actions\{[^}]*margin-top:auto/, 'футер карточки прижат к низу')
 })
@@ -432,5 +432,5 @@ test('карточка: ничего не вылезает и нет фикси�
 test('версия плагина поднята на +0.0.1', async () => {
   const { readFile } = await import('node:fs/promises')
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
-  assert.equal(pkg.version, '1.7.12')
+  assert.equal(pkg.version, '1.7.13')
 })
