@@ -140,6 +140,58 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * Статус-чип — та же система, что кнопки (спека v2): height 32, радиус 10,
+     * padding 0 12, border 1px, шрифт 600 12.5, inline-flex gap 6. Фон и рамка —
+     * мягкая заливка токеном по смыслу (success/warn/error/brand), текст — тем же
+     * токеном, поэтому точка-индикатор 6px слева красится `currentColor`.
+     */
+    const CHIP_BASE = {
+      boxSizing: 'border-box',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      height: 32,
+      padding: '0 12px',
+      borderRadius: 10,
+      border: '1px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 55%, transparent)',
+      background: 'color-mix(in srgb, var(--dsw-alias-brand-primary) 18%, transparent)',
+      color: 'var(--dsw-alias-brand-primary)',
+      fontSize: 12.5,
+      fontWeight: 600,
+      lineHeight: 1,
+      whiteSpace: 'nowrap',
+      flex: '0 0 auto',
+      minWidth: 0,
+    }
+    const CHIP_TONES = {
+      brand: {},
+      ok: {
+        border: '1px solid color-mix(in srgb, var(--dsw-alias-state-success-primary) 55%, transparent)',
+        background: 'color-mix(in srgb, var(--dsw-alias-state-success-primary) 16%, transparent)',
+        color: 'var(--dsw-alias-state-success-primary)',
+      },
+      warn: {
+        border: '1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary) 55%, transparent)',
+        background: 'color-mix(in srgb, var(--dsw-alias-state-warn-primary) 16%, transparent)',
+        color: 'var(--dsw-alias-state-warn-primary)',
+      },
+      error: {
+        border: '1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 55%, transparent)',
+        background: 'color-mix(in srgb, var(--dsw-alias-state-error-primary) 16%, transparent)',
+        color: 'var(--dsw-alias-state-error-primary)',
+      },
+      muted: {
+        border: '1px solid var(--dsw-alias-border-l2)',
+        background: 'color-mix(in srgb, var(--dsw-alias-label-primary) 7%, transparent)',
+        color: 'var(--dsw-alias-label-secondary)',
+      },
+    }
+    const chipStyle = (tone) => ({ ...CHIP_BASE, ...(CHIP_TONES[tone] ?? CHIP_TONES.brand) })
+    /** Точка-индикатор чипа: 6px, цвет наследует текст чипа. */
+    const CHIP_DOT = { boxSizing: 'border-box', width: 6, height: 6, borderRadius: '50%', background: 'currentColor', flex: '0 0 auto' }
+
+    /**
      * Страница плагина в едином стиле DSH: контент по центру (maxWidth 960),
      * шапка с иконкой и статусом, карточки-секции, адаптив в одну колонку.
      * Цвета — только токены темы; жёстких hex нет.
@@ -188,18 +240,6 @@ window.__ModuleLoader__.load({
         overflow: 'hidden',
       },
       headRight: { display: 'inline-flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flex: '0 0 auto', flexWrap: 'wrap', minWidth: 0 },
-      chip: {
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: '3px 9px',
-        borderRadius: 999,
-        fontSize: 12,
-        color: 'var(--dsw-alias-label-secondary)',
-        background: 'color-mix(in srgb, var(--dsw-alias-brand-primary) 12%, transparent)',
-        whiteSpace: 'nowrap',
-      },
-      dot: { width: 7, height: 7, borderRadius: '50%', flex: '0 0 auto' },
       refresh: { ...BTN.secondary, height: 32 },
       iconButton: { ...BTN.icon },
       card: {
@@ -261,7 +301,7 @@ window.__ModuleLoader__.load({
       // Сетка карточек: auto-fit, одна колонка на узком экране, одной высоты.
       '.dshc-page-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));align-items:stretch;}',
       // Кнопки — единая система: ширина по тексту, мягкие заливки из токенов.
-      '.dshc-page-primary,.dshc-page-button,.dshc-page-refresh,.dshc-page-icon{flex:0 0 auto;min-width:0;}',
+      '.dshc-page-primary,.dshc-page-button,.dshc-page-refresh,.dshc-page-icon,.dshc-page-chip{flex:0 0 auto;min-width:0;}',
       '.dshc-page-primary:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-brand-primary) 28%,transparent) !important;}',
       '.dshc-page-button:hover:not(:disabled),.dshc-page-refresh:hover:not(:disabled),.dshc-page-icon:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover) !important;}',
       '.dshc-page-primary:active:not(:disabled),.dshc-page-button:active:not(:disabled){transform:translateY(1px);}',
@@ -989,7 +1029,12 @@ window.__ModuleLoader__.load({
         h(
           'div',
           { className: 'dshc-page-head-right', style: UI.headRight },
-          h('span', { style: UI.chip }, h('span', { style: { ...UI.dot, background: chipTone } }), chipLabel),
+          h(
+            'span',
+            { className: 'dshc-page-chip', style: chipStyle(chipTone), 'data-dsh-cards-chip': 'status', role: 'status' },
+            h('span', { style: CHIP_DOT }),
+            chipLabel,
+          ),
           h(
             'button',
             { type: 'button', className: 'dshc-page-refresh', style: UI.refresh, onClick: onRefresh },
@@ -1023,9 +1068,7 @@ window.__ModuleLoader__.load({
       const [notice, setNotice] = React.useState('')
 
       const parsed = parseCard(text)
-      const chipTone = parsed.ok
-        ? 'var(--dsw-alias-state-success-primary)'
-        : 'var(--dsw-alias-state-error-primary)'
+      const chipTone = parsed.ok ? 'ok' : 'error'
 
       const copyExample = async () => {
         try {
