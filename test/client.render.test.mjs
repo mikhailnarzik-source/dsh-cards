@@ -78,6 +78,29 @@ function renderDetail(states = []) {
   return { ...survey(tree), locales }
 }
 
+/** Отрисовать карточку из блока ```dsh-card в переписке (слот fence). */
+function renderFence(card) {
+  const registration = loadClient()
+  const module = registration.factory((name) => {
+    if (name === 'react') return makeReact()
+    throw new Error(`неожиданный require: ${name}`)
+  })
+  const { ctx, slots } = makeContext()
+  module.apply(ctx)
+  const fence = slots.find((item) => item.options.name === 'conversation.chat.markdown.fence')
+  assert.ok(fence, 'слот conversation.chat.markdown.fence не зарегистрирован')
+  const tree = fence.component({ language: 'dsh-card', content: JSON.stringify(card) })
+  return survey(tree)
+}
+
+/** CSS карточки в ответе: стили, которые CardView кладёт рядом с разметкой. */
+function cardCss(nodes) {
+  return nodes
+    .filter((node) => node.type === 'style')
+    .flatMap((node) => node.children)
+    .join('\n')
+}
+
 /** Обойти дерево: вернуть элементы и тексты, попутно раскрывая компоненты. */
 function survey(node, acc = { nodes: [], texts: [] }) {
   if (node === null || node === undefined || node === false || node === true) return acc
@@ -314,4 +337,88 @@ test('словари en и ru содержат одинаковые ключи',
     assert.ok(key in dictionaries.en, `en: нет ключа ${key}`)
     assert.ok(key in dictionaries.ru, `ru: нет ключа ${key}`)
   }
+})
+
+/**
+ * Строки карточки: раньше это была flex-пара без min-width, и короткий ключ
+ * рвался посередине («Расходы» → «Расход» / «ы»). Теперь — grid с двумя
+ * колонками, ключ не рвётся, значение переносится по словам.
+ */
+test('строки карточки: grid-колонки 92px/1fr и gap 12', () => {
+  const { nodes } = renderFence({
+    title: 'Итог',
+    rows: [
+      { label: 'Расходы', value: '1 200 ₽' },
+      { label: 'Комментарий', value: 'Очень длинное значение из нескольких слов' },
+    ],
+  })
+  const rows = nodes.filter((node) => node.props?.className === 'dshc-row')
+  assert.equal(rows.length, 2, 'обе строки карточки отрисованы')
+  for (const row of rows) {
+    assert.equal(row.props.style, undefined, 'строка оформлена CSS-классом, а не inline flex')
+  }
+  const keys = nodes.filter((node) => node.props?.className === 'dshc-row-key')
+  const values = nodes.filter((node) => node.props?.className === 'dshc-row-value')
+  assert.deepEqual(keys.map((node) => textsOf(node).join('')), ['Расходы', 'Комментарий'])
+  assert.deepEqual(values.map((node) => textsOf(node).join('')), ['1 200 ₽', 'Очень длинное значение из нескольких слов'])
+
+  const css = cardCss(nodes)
+  assert.match(
+    css,
+    /\.dshc-row \{ display: grid; grid-template-columns: minmax\(92px, max-content\) minmax\(0, 1fr\); gap: 12px;/,
+    'grid-колонки minmax(92px,max-content) / minmax(0,1fr) и gap 12',
+  )
+  assert.match(css, /\.dshc-rows \{ display: flex; flex-direction: column; gap: 4px; min-width: 0; max-width: 100%; \}/)
+})
+
+test('ключ строки не рвётся, значение переносится по словам', () => {
+  const { nodes } = renderFence({ title: 'T', rows: [{ label: 'Расходы', value: 'Очень длинное значение' }] })
+  const css = cardCss(nodes)
+  assert.match(
+    css,
+    /\.dshc-row-key \{ min-width: 0; overflow-wrap: normal; word-break: normal; hyphens: auto;/,
+    'короткий ключ не рвётся посередине',
+  )
+  assert.match(
+    css,
+    /\.dshc-row-value \{ min-width: 0; overflow-wrap: anywhere; word-break: normal; hyphens: auto; font-weight: 600; text-align: right; \}/,
+    'значение переносится по словам, неразрывные токены — по anywhere',
+  )
+  assert.match(css, /\.dshc-card \{[^}]*overflow-wrap: anywhere/, 'карточка переносит длинные тексты')
+  assert.match(css, /\.dshc-card \{[^}]*min-width: 0/, 'карточка сжимается по ширине контейнера')
+  assert.doesNotMatch(css, /\.dshc-row-key \{[^}]*overflow-wrap: anywhere/, 'у ключа нет anywhere')
+})
+
+test('узкая карточка (<360px): ключ сверху, значение снизу', () => {
+  const { nodes } = renderFence({ title: 'T', rows: [{ label: 'Расходы', value: '1 200' }] })
+  const css = cardCss(nodes)
+  assert.match(css, /\.dshc-card \{[^}]*container-type: inline-size/, 'карточка — контейнер для container query')
+  assert.match(
+    css,
+    /@container dshc-card \(max-width: 360px\) \{\n  \.dshc-row \{ grid-template-columns: minmax\(0, 1fr\); gap: 2px; \}\n  \.dshc-row-value \{ text-align: left; \}\n\}/,
+    'на узкой карточке строка становится двухстрочной',
+  )
+  assert.match(css, /\.dshc-card \{[^}]*max-width: 100%/, 'карточка не вылезает за контейнер')
+})
+
+test('карточка: ничего не вылезает и нет фиксированных ширин', () => {
+  const { nodes } = renderFence({
+    title: 'T',
+    rows: [{ label: 'Ссылка', value: 'https://example.com/very/long/path/that/cannot/be/broken/by/spaces' }],
+    list: ['пункт списка с длинным словом невероятной_длины_для_проверки_переноса'],
+    note: 'примечание',
+  })
+  const css = cardCss(nodes)
+  for (const className of ['dshc-rows', 'dshc-row', 'dshc-row-key', 'dshc-row-value', 'dshc-card-note', 'dshc-list', 'dshc-list-item']) {
+    assert.match(css, new RegExp(`\\.${className} \\{[^}]*min-width: 0`), `${className}: min-width:0`)
+  }
+  assert.doesNotMatch(css, /(?<![-a-z])width: \d{3,}px/, 'нет фиксированных ширин')
+  assert.match(css, /\.dshc-card-title \{[^}]*overflow-wrap: anywhere/)
+  assert.match(css, /\.dshc-list-text \{[^}]*overflow-wrap: anywhere/)
+})
+
+test('версия плагина поднята на +0.0.1', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+  assert.equal(pkg.version, '1.7.10')
 })

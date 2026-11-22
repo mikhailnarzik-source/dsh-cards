@@ -320,11 +320,56 @@ window.__ModuleLoader__.load({
       return empty ? { ok: false, reason: 'карточка пустая' } : { ok: true, card }
     }
 
+    /**
+     * Строки карточки «ключ — значение».
+     *
+     * Раньше строки были flex-парой без min-width: ключ рвался посередине
+     * («Расходы» → «Расход» / «ы»), потому что родитель карточки наследовал
+     * `overflow-wrap:anywhere` из страницы и из markdown-ответа. Теперь строки —
+     * grid `minmax(92px,max-content) minmax(0,1fr)` с gap 12:
+     *  - ключ не рвётся (`overflow-wrap:normal; word-break:normal; hyphens:auto`),
+     *  - значение переносится по словам, а неразрывные токены (URL, пути) —
+     *    по `overflow-wrap:anywhere`,
+     *  - в узком контейнере (< 360 px) строка становится двухстрочной:
+     *    ключ сверху, значение снизу (container query).
+     * Ничего не выходит за карточку: у всех детей `min-width:0`.
+     */
+    const CARD_STYLES = [
+      '.dshc-card {',
+      '  box-sizing: border-box;',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  gap: 8px;',
+      '  min-width: 0;',
+      '  max-width: 100%;',
+      '  overflow-wrap: anywhere;',
+      '  word-break: normal;',
+      '  container-type: inline-size;',
+      '  container-name: dshc-card;',
+      '}',
+      '.dshc-card-title { min-width: 0; font-weight: 600; font-size: 13.5px; overflow-wrap: anywhere; }',
+      '.dshc-card-subtitle { min-width: 0; font-size: 12px; opacity: .75; overflow-wrap: anywhere; }',
+      '.dshc-card-note { min-width: 0; font-size: 12px; opacity: .7; overflow-wrap: anywhere; }',
+      '.dshc-rows { display: flex; flex-direction: column; gap: 4px; min-width: 0; max-width: 100%; }',
+      '.dshc-row { display: grid; grid-template-columns: minmax(92px, max-content) minmax(0, 1fr); gap: 12px; align-items: baseline; min-width: 0; max-width: 100%; }',
+      '.dshc-row-key { min-width: 0; overflow-wrap: normal; word-break: normal; hyphens: auto; opacity: .75; }',
+      '.dshc-row-value { min-width: 0; overflow-wrap: anywhere; word-break: normal; hyphens: auto; font-weight: 600; text-align: right; }',
+      '.dshc-list { display: flex; flex-direction: column; gap: 3px; min-width: 0; }',
+      '.dshc-list-item { display: flex; gap: 8px; min-width: 0; }',
+      '.dshc-list-mark { flex: 0 0 auto; opacity: .5; }',
+      '.dshc-list-text { min-width: 0; overflow-wrap: anywhere; }',
+      '@container dshc-card (max-width: 360px) {',
+      '  .dshc-row { grid-template-columns: minmax(0, 1fr); gap: 2px; }',
+      '  .dshc-row-value { text-align: left; }',
+      '}',
+    ].join('\n')
+
     /** Сама карточка: используется и в предпросмотре, и в ответе ассистента. */
     function CardView({ card, actions, copyText, detailText }) {
       return h(
         'div',
         {
+          className: 'dshc-card',
           style: {
             display: 'flex',
             flexDirection: 'column',
@@ -335,20 +380,24 @@ window.__ModuleLoader__.load({
             borderLeft: `3px solid ${TONES[card.tone] ?? TONES.info}`,
             background: 'rgba(128,128,128,0.06)',
             fontSize: 13,
+            minWidth: 0,
+            maxWidth: '100%',
+            boxSizing: 'border-box',
           },
         },
-        card.title !== '' ? h('span', { style: { fontWeight: 600, fontSize: 13.5 } }, card.title) : null,
-        card.subtitle !== '' ? h('span', { style: { fontSize: 12, opacity: 0.75 } }, card.subtitle) : null,
+        h('style', { key: 'card-css' }, CARD_STYLES),
+        card.title !== '' ? h('span', { className: 'dshc-card-title' }, card.title) : null,
+        card.subtitle !== '' ? h('span', { className: 'dshc-card-subtitle' }, card.subtitle) : null,
         card.rows.length > 0
           ? h(
               'div',
-              { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
+              { className: 'dshc-rows' },
               ...card.rows.map((row, index) =>
                 h(
                   'div',
-                  { key: index, style: { display: 'flex', gap: 12, justifyContent: 'space-between' } },
-                  h('span', { style: { opacity: 0.75 } }, row.label),
-                  h('span', { style: { fontWeight: 600, textAlign: 'right' } }, row.value),
+                  { key: index, className: 'dshc-row' },
+                  h('span', { className: 'dshc-row-key' }, row.label),
+                  h('span', { className: 'dshc-row-value' }, row.value),
                 ),
               ),
             )
@@ -356,13 +405,13 @@ window.__ModuleLoader__.load({
         card.list.length > 0
           ? h(
               'div',
-              { style: { display: 'flex', flexDirection: 'column', gap: 3 } },
+              { className: 'dshc-list' },
               ...card.list.map((item, index) =>
                 h(
                   'div',
-                  { key: index, style: { display: 'flex', gap: 8 } },
-                  h('span', { style: { opacity: 0.5 } }, '•'),
-                  h('span', null, item),
+                  { key: index, className: 'dshc-list-item' },
+                  h('span', { className: 'dshc-list-mark' }, '•'),
+                  h('span', { className: 'dshc-list-text' }, item),
                 ),
               ),
             )
@@ -411,7 +460,7 @@ window.__ModuleLoader__.load({
               copyText,
             )
           : null,
-        card.note !== '' ? h('span', { style: { fontSize: 12, opacity: 0.7 } }, card.note) : null,
+        card.note !== '' ? h('span', { className: 'dshc-card-note' }, card.note) : null,
         (Array.isArray(actions) && actions.length > 0) || (typeof copyText === 'string' && copyText !== '')
           ? h(CardActions, { actions, copyText })
           : null,
@@ -465,8 +514,9 @@ window.__ModuleLoader__.load({
       '.dshc-menu-item:active { background: var(--dsw-alias-interactive-bg-active); }',
       '.dshc-menu-sep { height: 1px; margin: 3px 6px; background: var(--dsw-alias-border-l2); }',
       '.dshc-menu-item span { min-width: 0; overflow-wrap: anywhere; }',
-      '.dshc-corner { margin-left: auto; display: inline-flex; align-items: center; justify-content: center; gap: 3px; height: 32px; min-width: 36px; padding: 0 8px; border-radius: 10px; border: 1px solid var(--dsw-alias-border-l4); background: transparent; color: var(--dsw-alias-label-primary); cursor: pointer; }',
+      '.dshc-corner { margin-left: auto; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; gap: 3px; height: 32px; padding: 0 8px; border-radius: 10px; border: 1px solid var(--dsw-alias-border-l4); background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 12.5px; font-weight: 600; line-height: 1; white-space: nowrap; cursor: pointer; }',
       '.dshc-corner:hover { background: var(--dsw-alias-interactive-bg-hover); }',
+      '.dshc-corner:focus-visible { outline: 2px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 55%, transparent); outline-offset: 1px; }',
     ].join('\n')
 
     /** Отправить действие в host и вернуть признак успеха. */
