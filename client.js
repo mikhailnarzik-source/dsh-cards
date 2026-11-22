@@ -61,6 +61,64 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * Единая система кнопок плагина (спека `.tools/plugin-design-spec-v2.md`):
+     * высота 36 px (маленькие в шапке — 32), padding 0 14, радиус 10,
+     * шрифт 600 12.5, ширина — по тексту. Все варианты — только токены темы.
+     *
+     * primary — мягкая заливка brand + текст brand. Белый фон с белым текстом
+     * запрещён: в тёмной теме brand-primary сам белый, поэтому старые
+     * `button-primary-fill` + `label-primary-inverted` давали нечитаемый текст.
+     */
+    const BTN_BASE = {
+      boxSizing: 'border-box',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      height: 36,
+      padding: '0 14px',
+      borderRadius: 10,
+      fontFamily: 'inherit',
+      fontSize: 12.5,
+      fontWeight: 600,
+      lineHeight: 1,
+      whiteSpace: 'nowrap',
+      cursor: 'pointer',
+      transition: 'background-color .14s ease, border-color .14s ease, color .14s ease',
+    }
+    const BTN = {
+      base: BTN_BASE,
+      primary: {
+        ...BTN_BASE,
+        border: '1px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 55%, transparent)',
+        background: 'color-mix(in srgb, var(--dsw-alias-brand-primary) 18%, transparent)',
+        color: 'var(--dsw-alias-brand-primary)',
+      },
+      secondary: {
+        ...BTN_BASE,
+        border: '1px solid var(--dsw-alias-border-l4)',
+        background: 'transparent',
+        color: 'var(--dsw-alias-label-primary)',
+      },
+      danger: {
+        ...BTN_BASE,
+        border: '1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 50%, transparent)',
+        background: 'color-mix(in srgb, var(--dsw-alias-state-error-primary) 16%, transparent)',
+        color: 'var(--dsw-alias-state-error-primary)',
+      },
+      small: { ...BTN_BASE, height: 32, padding: '0 12px' },
+      icon: {
+        ...BTN_BASE,
+        width: 32,
+        height: 32,
+        padding: 0,
+        border: '1px solid var(--dsw-alias-border-l4)',
+        background: 'transparent',
+        color: 'var(--dsw-alias-label-secondary)',
+      },
+    }
+
+    /**
      * Страница плагина в едином стиле DSH: контент по центру (maxWidth 960),
      * шапка с иконкой и статусом, карточки-секции, адаптив в одну колонку.
      * Цвета — только токены темы; жёстких hex нет.
@@ -107,7 +165,7 @@ window.__ModuleLoader__.load({
         WebkitBoxOrient: 'vertical',
         overflow: 'hidden',
       },
-      headRight: { display: 'inline-flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flex: '0 0 auto' },
+      headRight: { display: 'inline-flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flex: '0 0 auto', flexWrap: 'wrap', minWidth: 0 },
       chip: {
         display: 'inline-flex',
         alignItems: 'center',
@@ -120,34 +178,8 @@ window.__ModuleLoader__.load({
         whiteSpace: 'nowrap',
       },
       dot: { width: 7, height: 7, borderRadius: '50%', flex: '0 0 auto' },
-      refresh: {
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: 32,
-        padding: '0 12px',
-        borderRadius: 10,
-        border: '1px solid var(--dsw-alias-border-l4)',
-        background: 'transparent',
-        color: 'var(--dsw-alias-label-primary)',
-        font: 'inherit',
-        fontSize: 12.5,
-        fontWeight: 600,
-        cursor: 'pointer',
-      },
-      iconButton: {
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: 28,
-        height: 28,
-        padding: 0,
-        borderRadius: 8,
-        border: '1px solid var(--dsw-alias-border-l4)',
-        background: 'transparent',
-        color: 'var(--dsw-alias-label-secondary)',
-        cursor: 'pointer',
-      },
+      refresh: { ...BTN.secondary, height: 32 },
+      iconButton: { ...BTN.icon },
       card: {
         boxSizing: 'border-box',
         minWidth: 0,
@@ -159,14 +191,15 @@ window.__ModuleLoader__.load({
         border: '1px solid var(--dsw-alias-border-l2)',
         background: 'var(--dsw-alias-bg-layer-1)',
       },
-      sectionHead: { display: 'flex', alignItems: 'center', gap: 8 },
+      sectionHead: { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 },
       bar: { flex: '0 0 auto', width: 3, height: 14, borderRadius: 2, background: 'var(--dsw-alias-brand-primary)' },
       sectionTitle: { margin: 0, fontSize: 14, fontWeight: 600, lineHeight: 1.3, color: 'var(--dsw-alias-label-primary)' },
       grid: {
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))',
         gap: 16,
-        alignItems: 'start',
+        alignItems: 'stretch',
+        minWidth: 0,
       },
       field: { display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 },
       label: { fontSize: 12, fontWeight: 600, color: 'var(--dsw-alias-label-secondary)' },
@@ -185,54 +218,38 @@ window.__ModuleLoader__.load({
         lineHeight: 1.5,
         resize: 'vertical',
       },
-      primary: {
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: 36,
-        padding: '0 14px',
-        borderRadius: 10,
-        border: '1px solid transparent',
-        background: 'var(--dsw-alias-button-primary-fill)',
-        color: 'var(--dsw-alias-label-primary-inverted)',
-        font: 'inherit',
-        fontSize: 12.5,
-        fontWeight: 600,
-        cursor: 'pointer',
-      },
-      secondary: {
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: 36,
-        padding: '0 14px',
-        borderRadius: 10,
-        border: '1px solid var(--dsw-alias-border-l4)',
-        background: 'transparent',
-        color: 'var(--dsw-alias-label-primary)',
-        font: 'inherit',
-        fontSize: 12.5,
-        fontWeight: 600,
-        cursor: 'pointer',
-      },
+      primary: { ...BTN.primary },
+      secondary: { ...BTN.secondary },
       empty: {
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
         gap: 6,
+        flex: '1 1 auto',
+        minWidth: 0,
         padding: '28px 12px',
         textAlign: 'center',
       },
       emptyText: { fontSize: 12.5, lineHeight: 1.5, color: 'var(--dsw-alias-label-tertiary)' },
     }
 
-    /** CSS, который нельзя задать inline: адаптив и состояния наведения. */
+    /** CSS, который нельзя задать inline: наведение, фокус, disabled и адаптив. */
     const PAGE_CSS = [
-      '.dshc-page-grid{grid-template-columns:repeat(auto-fit,minmax(280px,1fr));}',
+      // Сетка карточек: auto-fit, одна колонка на узком экране, одной высоты.
+      '.dshc-page-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));align-items:stretch;}',
+      // Кнопки — единая система: ширина по тексту, мягкие заливки из токенов.
+      '.dshc-page-primary,.dshc-page-button,.dshc-page-refresh,.dshc-page-icon{flex:0 0 auto;min-width:0;}',
+      '.dshc-page-primary:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-brand-primary) 28%,transparent) !important;}',
+      '.dshc-page-button:hover:not(:disabled),.dshc-page-refresh:hover:not(:disabled),.dshc-page-icon:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover) !important;}',
+      '.dshc-page-primary:active:not(:disabled),.dshc-page-button:active:not(:disabled){transform:translateY(1px);}',
       '.dshc-page-field:focus-visible,.dshc-page-primary:focus-visible,.dshc-page-button:focus-visible,.dshc-page-refresh:focus-visible,.dshc-page-icon:focus-visible{outline:2px solid color-mix(in srgb,var(--dsw-alias-brand-primary) 55%,transparent);outline-offset:1px;}',
-      '.dshc-page-primary:disabled,.dshc-page-button:disabled{opacity:.55;cursor:default;}',
-      '@media (max-width: 760px){.dshc-page{padding:18px 16px 32px !important;}.dshc-page-grid{grid-template-columns:1fr !important;}}',
+      '.dshc-page-primary:disabled,.dshc-page-button:disabled,.dshc-page-refresh:disabled{opacity:.55;cursor:default;}',
+      // Адаптив: длинные строки переносятся, кнопки — в одну строку по тексту.
+      '.dshc-page{overflow-wrap:anywhere;}',
+      '.dshc-page-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0;margin-top:auto;}',
+      '@media (max-width: 900px){.dshc-page{padding:20px 18px 36px !important;}.dshc-page-grid{grid-template-columns:1fr !important;}}',
+      '@media (max-width: 640px){.dshc-page{padding:16px 14px 28px !important;}.dshc-page-head{gap:10px;}.dshc-page-head-right{flex:1 1 100%;margin-left:0;}}',
     ].join('\n')
 
     let translate = (key) => key
@@ -402,47 +419,54 @@ window.__ModuleLoader__.load({
     }
 
     /** Рендерер блока кода ```dsh-card. */
-    /** Стили кнопок: одинаковый вид у всех, заметное наведение. */
+    /** Стили кнопок карточки: та же единая система, что и на странице. */
     const ACTION_STYLES = [
       '.dshc-actions {',
       '  display: flex;',
       '  align-items: center;',
+      '  flex-wrap: wrap;',
       '  gap: 8px;',
+      '  min-width: 0;',
+      '  max-width: 100%;',
       '  margin-top: 12px;',
       '}',
       '.dshc-action {',
       '  flex: 0 0 auto;',
+      '  box-sizing: border-box;',
       '  white-space: nowrap;',
       '  display: inline-flex;',
       '  align-items: center;',
       '  justify-content: center;',
-      '  height: 30px;',
+      '  gap: 6px;',
+      '  height: 36px;',
       '  padding: 0 14px;',
-      '  border-radius: 8px;',
-      '  border: 1px solid rgba(106,139,208,0.55);',
-      '  background: rgba(106,139,208,0.28);',
-      '  color: inherit;',
+      '  border-radius: 10px;',
+      '  border: 1px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 55%, transparent);',
+      '  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 18%, transparent);',
+      '  color: var(--dsw-alias-brand-primary);',
       '  font: inherit;',
       '  font-size: 12.5px;',
       '  font-weight: 600;',
+      '  line-height: 1;',
       '  cursor: pointer;',
       '  transition: background .14s ease, border-color .14s ease, transform .08s ease;',
       '}',
       '.dshc-action:hover:not(:disabled) {',
-      '  background: rgba(106,139,208,0.46);',
-      '  border-color: rgba(106,139,208,0.9);',
+      '  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 28%, transparent);',
       '}',
       '.dshc-action:active:not(:disabled) { transform: translateY(1px); }',
-      '.dshc-action:disabled { opacity: .6; cursor: progress; }',
+      '.dshc-action:disabled { opacity: .55; cursor: default; }',
+      '.dshc-action:focus-visible { outline: 2px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 55%, transparent); outline-offset: 1px; }',
       '.dshc-split-main { border-top-right-radius: 0 !important; border-bottom-right-radius: 0 !important; }',
-      '.dshc-chevron { border-top-left-radius: 0 !important; border-bottom-left-radius: 0 !important; border-left-color: rgba(106,139,208,0.25) !important; width: 28px; padding: 0 !important; margin-left: -8px; }',
-      '.dshc-menu { display: flex; flex-direction: column; gap: 1px; border: 1px solid rgba(128,128,128,0.30); border-radius: 12px; background: rgba(30,31,36,0.98); box-shadow: 0 10px 28px rgba(0,0,0,0.35); }',
-      '.dshc-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 10px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; font-size: 12.5px; font-weight: 400; text-align: left; cursor: pointer; white-space: nowrap; }',
-      '.dshc-menu-item:hover { background: rgba(128,128,128,0.18); }',
-      '.dshc-menu-item:active { background: rgba(128,128,128,0.26); }',
-      '.dshc-menu-sep { height: 1px; margin: 3px 6px; background: rgba(128,128,128,0.28); }',
-      '.dshc-corner { margin-left: auto; display: inline-flex; align-items: center; justify-content: center; gap: 3px; height: 30px; width: 40px; padding: 0; border-radius: 8px; border: 1px solid rgba(128,128,128,0.35); background: rgba(128,128,128,0.14); color: inherit; cursor: pointer; }',
-      '.dshc-corner:hover { background: rgba(128,128,128,0.24); }',
+      '.dshc-chevron { border-top-left-radius: 0 !important; border-bottom-left-radius: 0 !important; border-left-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 25%, transparent) !important; min-width: 32px; padding: 0 8px !important; margin-left: -8px; }',
+      '.dshc-menu { display: flex; flex-direction: column; gap: 1px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 12px; background: var(--dsw-alias-bg-layer-2); box-shadow: 0 10px 28px rgba(0,0,0,0.35); }',
+      '.dshc-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; padding: 7px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 12.5px; font-weight: 400; text-align: left; cursor: pointer; }',
+      '.dshc-menu-item:hover { background: var(--dsw-alias-interactive-bg-hover); }',
+      '.dshc-menu-item:active { background: var(--dsw-alias-interactive-bg-active); }',
+      '.dshc-menu-sep { height: 1px; margin: 3px 6px; background: var(--dsw-alias-border-l2); }',
+      '.dshc-menu-item span { min-width: 0; overflow-wrap: anywhere; }',
+      '.dshc-corner { margin-left: auto; display: inline-flex; align-items: center; justify-content: center; gap: 3px; height: 32px; min-width: 36px; padding: 0 8px; border-radius: 10px; border: 1px solid var(--dsw-alias-border-l4); background: transparent; color: var(--dsw-alias-label-primary); cursor: pointer; }',
+      '.dshc-corner:hover { background: var(--dsw-alias-interactive-bg-hover); }',
     ].join('\n')
 
     /** Отправить действие в host и вернуть признак успеха. */
@@ -644,9 +668,9 @@ window.__ModuleLoader__.load({
                   disabled: state.busy !== '',
                   onClick: () => void run(action),
                   style: colored && results[action.label] === true
-                    ? { background: 'rgba(47,158,68,0.45)', borderColor: 'rgba(47,158,68,0.95)', cursor: 'default' }
+                    ? { background: 'color-mix(in srgb, var(--dsw-alias-state-success-primary) 38%, transparent)', borderColor: 'color-mix(in srgb, var(--dsw-alias-state-success-primary) 80%, transparent)', color: 'var(--dsw-alias-state-success-primary)', cursor: 'default' }
                     : colored && results[action.label] === false
-                      ? { background: 'rgba(224,49,49,0.42)', borderColor: 'rgba(224,49,49,0.95)' }
+                      ? { background: 'color-mix(in srgb, var(--dsw-alias-state-error-primary) 34%, transparent)', borderColor: 'color-mix(in srgb, var(--dsw-alias-state-error-primary) 80%, transparent)', color: 'var(--dsw-alias-state-error-primary)' }
                       : undefined,
                 },
                 state.busy === action.label
@@ -686,7 +710,7 @@ window.__ModuleLoader__.load({
               'div',
               {
                 className: 'dshc-menu',
-                style: { position: 'absolute', right: 0, bottom: 38, width: 300, maxHeight: 380, overflowY: 'auto', marginTop: 0, padding: 6, borderRadius: 12, zIndex: 60 },
+                style: { position: 'absolute', right: 0, bottom: 38, width: 'min(300px, 100%)', maxHeight: 380, overflowY: 'auto', overflowX: 'hidden', marginTop: 0, padding: 6, borderRadius: 12, zIndex: 60 },
               },
               state.editor.defaultApp !== null && state.editor.defaultApp !== undefined
                 ? h(
@@ -785,7 +809,7 @@ window.__ModuleLoader__.load({
         state.error !== '' && state.error !== undefined
           ? h(
               'span',
-              { style: { fontSize: 12, color: 'rgba(255,120,120,0.95)', lineHeight: 1.4 } },
+              { style: { fontSize: 12, color: 'var(--dsw-alias-state-error-primary)', lineHeight: 1.4, overflowWrap: 'anywhere' } },
               state.error,
             )
           : null,
@@ -892,7 +916,7 @@ window.__ModuleLoader__.load({
         ),
         h(
           'div',
-          { style: UI.headRight },
+          { className: 'dshc-page-head-right', style: UI.headRight },
           h('span', { style: UI.chip }, h('span', { style: { ...UI.dot, background: chipTone } }), chipLabel),
           h(
             'button',
@@ -972,7 +996,7 @@ window.__ModuleLoader__.load({
               }),
               h(
                 'div',
-                { style: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' } },
+                { className: 'dshc-page-actions' },
                 h(
                   'button',
                   { type: 'button', className: 'dshc-page-primary', style: UI.primary, onClick: () => void copyExample() },
@@ -985,7 +1009,11 @@ window.__ModuleLoader__.load({
               SectionCard,
               { key: 'preview', title: t('preview') },
               parsed.ok
-                ? h(CardView, { card: parsed.card })
+                ? h(
+                    'div',
+                    { style: { display: 'flex', flexDirection: 'column', flex: '1 1 auto', minWidth: 0 } },
+                    h(CardView, { card: parsed.card }),
+                  )
                 : h(
                     'div',
                     { style: UI.empty },
