@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Cards",
-    "description": "A ```dsh-card block with JSON renders as a tidy card: a title, key–value rows, a list and a note.",
+    "description": "Tidy cards in assistant answers: a ```dsh-card block with JSON becomes a summary with a title, key–value rows, a list and a note. A card can carry buttons: copy a command, open a file or link, publish a repository. Live preview is under Plugins on the plugin page.",
     "detail": "docs/DETAIL.md"
   }
 }
