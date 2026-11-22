@@ -2,7 +2,7 @@
  * Browser half of `dsh-cards`.
  *
  * Два места:
- *  - карточка в списке плагинов: формат блока и живой предпросмотр;
+ *  - страница плагина: формат блока и живой предпросмотр в едином стиле;
  *  - отрисовка блока ```dsh-card в ответах ассистента.
  *
  * Слот блоков кода может быть одиночным, поэтому регистрируемся с приоритетом
@@ -19,11 +19,12 @@ window.__ModuleLoader__.load({
     const NS = 'dshCards'
     const LANGUAGE = 'dsh-card'
 
+    // Тона карточки — только токены темы DSH: полоса слева подстраивается под тему.
     const TONES = {
-      info: 'rgba(84,126,214,0.85)',
-      success: 'rgba(47,158,68,0.85)',
-      warning: 'rgba(232,89,12,0.9)',
-      danger: 'rgba(209,36,47,0.9)',
+      info: 'var(--dsw-alias-brand-primary)',
+      success: 'var(--dsw-alias-state-success-primary)',
+      warning: 'var(--dsw-alias-state-warn-primary)',
+      danger: 'var(--dsw-alias-state-error-primary)',
     }
 
     const en = {
@@ -37,6 +38,10 @@ window.__ModuleLoader__.load({
       collapse: 'Collapse',
       copy: 'Copy example',
       copied: 'Copied — paste it into a message',
+      statusReady: 'Ready',
+      statusBroken: 'Error',
+      brokenHint: 'Expected a JSON object with title, rows, list and note.',
+      refresh: 'Refresh',
     }
     const ru = {
       title: 'Карточки',
@@ -49,81 +54,202 @@ window.__ModuleLoader__.load({
       collapse: 'Свернуть',
       copy: 'Скопировать пример',
       copied: 'Скопировано — вставьте в сообщение',
+      statusReady: 'Разбирается',
+      statusBroken: 'Ошибка',
+      brokenHint: 'Ожидается объект JSON с полями title, rows, list и note.',
+      refresh: 'Обновить',
     }
 
-    const S = {
-      card: { display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start', fontSize: 13 },
-      panel: { display: 'flex', flexDirection: 'column', gap: 8, minWidth: 240, flex: '1 1 300px' },
-      area: {
-        width: '100%',
+    /**
+     * Страница плагина в едином стиле DSH: контент по центру (maxWidth 960),
+     * шапка с иконкой и статусом, карточки-секции, адаптив в одну колонку.
+     * Цвета — только токены темы; жёстких hex нет.
+     */
+    const UI = {
+      page: {
         boxSizing: 'border-box',
-        minHeight: 140,
-        padding: '8px 10px',
-        borderRadius: 8,
-        border: '1px solid rgba(128,128,128,0.35)',
-        background: 'transparent',
-        color: 'inherit',
-        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-        fontSize: 12,
-        resize: 'vertical',
+        width: '100%',
+        maxWidth: 960,
+        margin: '0 auto',
+        padding: '24px 28px 40px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 16,
+        fontSize: 13,
+        lineHeight: 1.55,
+        color: 'var(--dsw-alias-label-primary)',
       },
-      button: {
-        padding: '6px 12px',
-        borderRadius: 8,
-        border: '1px solid rgba(128,128,128,0.35)',
-        background: 'rgba(128,128,128,0.12)',
-        color: 'inherit',
+      head: { display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' },
+      icon: {
+        boxSizing: 'border-box',
+        flex: '0 0 auto',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 52,
+        height: 52,
+        borderRadius: 14,
+        fontSize: 26,
+        lineHeight: 1,
+        background: 'color-mix(in srgb, var(--dsw-alias-brand-primary) 16%, transparent)',
+        border: '1px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 28%, transparent)',
+      },
+      headText: { display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flex: '1 1 240px' },
+      title: { margin: 0, fontSize: 20, fontWeight: 600, lineHeight: 1.25, color: 'var(--dsw-alias-label-primary)' },
+      subtitle: {
+        margin: 0,
+        fontSize: 12.5,
+        fontWeight: 400,
+        lineHeight: 1.5,
+        color: 'var(--dsw-alias-label-secondary)',
+        display: '-webkit-box',
+        WebkitLineClamp: 2,
+        WebkitBoxOrient: 'vertical',
+        overflow: 'hidden',
+      },
+      headRight: { display: 'inline-flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flex: '0 0 auto' },
+      chip: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '3px 9px',
+        borderRadius: 999,
+        fontSize: 12,
+        color: 'var(--dsw-alias-label-secondary)',
+        background: 'color-mix(in srgb, var(--dsw-alias-brand-primary) 12%, transparent)',
+        whiteSpace: 'nowrap',
+      },
+      dot: { width: 7, height: 7, borderRadius: '50%', flex: '0 0 auto' },
+      refresh: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: 32,
+        padding: '0 12px',
+        borderRadius: 10,
+        border: '1px solid var(--dsw-alias-border-l4)',
+        background: 'transparent',
+        color: 'var(--dsw-alias-label-primary)',
         font: 'inherit',
         fontSize: 12.5,
         fontWeight: 600,
         cursor: 'pointer',
-        alignSelf: 'flex-start',
       },
-      cardBox: {
+      iconButton: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 28,
+        height: 28,
+        padding: 0,
+        borderRadius: 8,
+        border: '1px solid var(--dsw-alias-border-l4)',
+        background: 'transparent',
+        color: 'var(--dsw-alias-label-secondary)',
+        cursor: 'pointer',
+      },
+      card: {
+        boxSizing: 'border-box',
+        minWidth: 0,
         display: 'flex',
         flexDirection: 'column',
-        gap: 8,
-        padding: '12px 14px',
-        borderRadius: 12,
-        border: '1px solid rgba(128,128,128,0.28)',
-        background: 'rgba(128,128,128,0.06)',
-        minWidth: 240,
-        flex: '1 1 300px',
+        gap: 12,
+        padding: 16,
+        borderRadius: 14,
+        border: '1px solid var(--dsw-alias-border-l2)',
+        background: 'var(--dsw-alias-bg-layer-1)',
       },
+      sectionHead: { display: 'flex', alignItems: 'center', gap: 8 },
+      bar: { flex: '0 0 auto', width: 3, height: 14, borderRadius: 2, background: 'var(--dsw-alias-brand-primary)' },
+      sectionTitle: { margin: 0, fontSize: 14, fontWeight: 600, lineHeight: 1.3, color: 'var(--dsw-alias-label-primary)' },
+      grid: {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+        gap: 16,
+        alignItems: 'start',
+      },
+      field: { display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 },
+      label: { fontSize: 12, fontWeight: 600, color: 'var(--dsw-alias-label-secondary)' },
+      hint: { fontSize: 12, lineHeight: 1.5, color: 'var(--dsw-alias-label-tertiary)', overflowWrap: 'anywhere' },
+      area: {
+        boxSizing: 'border-box',
+        width: '100%',
+        minHeight: 160,
+        padding: '10px 12px',
+        borderRadius: 9,
+        border: '1px solid var(--dsw-alias-border-l2)',
+        background: 'var(--dsw-alias-bg-layer-2)',
+        color: 'var(--dsw-alias-label-primary)',
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+        fontSize: 12,
+        lineHeight: 1.5,
+        resize: 'vertical',
+      },
+      primary: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: 36,
+        padding: '0 14px',
+        borderRadius: 10,
+        border: '1px solid transparent',
+        background: 'var(--dsw-alias-button-primary-fill)',
+        color: 'var(--dsw-alias-label-primary-inverted)',
+        font: 'inherit',
+        fontSize: 12.5,
+        fontWeight: 600,
+        cursor: 'pointer',
+      },
+      secondary: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: 36,
+        padding: '0 14px',
+        borderRadius: 10,
+        border: '1px solid var(--dsw-alias-border-l4)',
+        background: 'transparent',
+        color: 'var(--dsw-alias-label-primary)',
+        font: 'inherit',
+        fontSize: 12.5,
+        fontWeight: 600,
+        cursor: 'pointer',
+      },
+      empty: {
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        padding: '28px 12px',
+        textAlign: 'center',
+      },
+      emptyText: { fontSize: 12.5, lineHeight: 1.5, color: 'var(--dsw-alias-label-tertiary)' },
     }
+
+    /** CSS, который нельзя задать inline: адаптив и состояния наведения. */
+    const PAGE_CSS = [
+      '.dshc-page-grid{grid-template-columns:repeat(auto-fit,minmax(280px,1fr));}',
+      '.dshc-page-field:focus-visible,.dshc-page-primary:focus-visible,.dshc-page-button:focus-visible,.dshc-page-refresh:focus-visible,.dshc-page-icon:focus-visible{outline:2px solid color-mix(in srgb,var(--dsw-alias-brand-primary) 55%,transparent);outline-offset:1px;}',
+      '.dshc-page-primary:disabled,.dshc-page-button:disabled{opacity:.55;cursor:default;}',
+      '@media (max-width: 760px){.dshc-page{padding:18px 16px 32px !important;}.dshc-page-grid{grid-template-columns:1fr !important;}}',
+    ].join('\n')
 
     let translate = (key) => key
 
     /** Разобрать блок; при ошибке — понятная причина. */
-    /** Кнопка-шеврон: развернуть и свернуть. Виден в любой теме (currentColor). */
+    /** Кнопка-шеврон: свернуть страницу до шапки или развернуть обратно. */
     function ToggleIcon({ open, onClick }) {
       return h(
         'button',
         {
           type: 'button',
           onClick,
-          title: open ? 'Свернуть' : 'Открыть',
-          'aria-label': open ? 'Свернуть' : 'Открыть',
+          title: open ? translate('collapse') : translate('open'),
+          'aria-label': open ? translate('collapse') : translate('open'),
           'aria-expanded': open ? 'true' : 'false',
-          style: {
-            position: 'absolute',
-            // Свёрнутая карточка: по центру по вертикали. Развёрнутая: в углу.
-            top: open ? 8 : '50%',
-            transform: open ? 'none' : 'translateY(-50%)',
-            right: 8,
-            zIndex: 2,
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 28,
-            height: 28,
-            padding: 0,
-            borderRadius: 8,
-            border: '1px solid rgba(128,128,128,0.32)',
-            background: 'rgba(128,128,128,0.1)',
-            color: 'inherit',
-            cursor: 'pointer',
-          },
+          className: 'dshc-page-icon',
+          style: UI.iconButton,
         },
         h(
           'svg',
@@ -752,101 +878,127 @@ window.__ModuleLoader__.load({
       2,
     )
 
-        /** Рамка карточки: тот же вид, что у остальных наших плагинов. */
-    function CardFrame({ children }) {
+    /** Шапка страницы: квадрат с иконкой, заголовок, статус-чип и «Обновить». */
+    function PageHeader({ icon, title, subtitle, chipLabel, chipTone, refreshLabel, onRefresh, open, onToggle }) {
       return h(
         'div',
-        {
-          style: {
-            position: 'relative',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 8,
-            padding: '10px 44px 12px 12px',
-            borderRadius: 10,
-            border: '1px solid rgba(128,128,128,0.28)',
-            background: 'rgba(128,128,128,0.07)',
-            boxSizing: 'border-box',
-          },
-        },
+        { className: 'dshc-page-head', style: UI.head },
+        h('div', { style: UI.icon }, icon),
+        h(
+          'div',
+          { style: UI.headText },
+          h('h1', { style: UI.title }, title),
+          subtitle !== '' ? h('p', { style: UI.subtitle }, subtitle) : null,
+        ),
+        h(
+          'div',
+          { style: UI.headRight },
+          h('span', { style: UI.chip }, h('span', { style: { ...UI.dot, background: chipTone } }), chipLabel),
+          h(
+            'button',
+            { type: 'button', className: 'dshc-page-refresh', style: UI.refresh, onClick: onRefresh },
+            refreshLabel,
+          ),
+          onToggle === undefined ? null : h(ToggleIcon, { open, onClick: onToggle }),
+        ),
+      )
+    }
+
+    /** Карточка-секция: акцентная полоска, заголовок 14/600 и содержимое. */
+    function SectionCard({ title, children }) {
+      return h(
+        'section',
+        { style: UI.card },
+        h('div', { style: UI.sectionHead }, h('span', { style: UI.bar }), h('h2', { style: UI.sectionTitle }, title)),
         children,
       )
     }
 
-function CardsCard() {
+    function CardsCard() {
       const t = (key) => translate(key)
-      const [open, setOpen] = React.useState(false)
+      const [open, setOpen] = React.useState(true)
       const [text, setText] = React.useState(EXAMPLE)
       const [notice, setNotice] = React.useState('')
 
-      if (!open) {
-        return h(
-          'div',
-          {
-            style: {
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              padding: '6px 10px',
-              borderRadius: 8,
-              border: '1px solid rgba(128,128,128,0.22)',
-              background: 'rgba(128,128,128,0.05)',
-              fontSize: 13,
-            },
+      const parsed = parseCard(text)
+      const chipTone = parsed.ok
+        ? 'var(--dsw-alias-state-success-primary)'
+        : 'var(--dsw-alias-state-error-primary)'
+
+      const copyExample = async () => {
+        try {
+          await navigator.clipboard.writeText('\u0060\u0060\u0060dsh-card\n' + text + '\n\u0060\u0060\u0060')
+          setNotice(t('copied'))
+        } catch {
+          setNotice(t('copied'))
+        }
+      }
+
+      const blocks = [
+        h('style', { key: 'page-css' }, PAGE_CSS),
+        h(PageHeader, {
+          key: 'page-head',
+          icon: '🧩',
+          title: t('heading'),
+          subtitle: t('hint'),
+          chipLabel: parsed.ok ? t('statusReady') : t('statusBroken'),
+          chipTone,
+          refreshLabel: t('refresh'),
+          onRefresh: () => {
+            setText(EXAMPLE)
+            setNotice('')
           },
-          h('span', { style: { fontWeight: 600 } }, t('heading')),
-          h('span', { style: { fontSize: 12, opacity: 0.6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, t('hint')),
-          h(ToggleIcon, { open: false, onClick: () => setOpen(true) }),
+          open,
+          onToggle: () => setOpen(!open),
+        }),
+      ]
+
+      if (open) {
+        blocks.push(
+          h(
+            'div',
+            { key: 'page-grid', className: 'dshc-page-grid', style: UI.grid },
+            h(
+              SectionCard,
+              { key: 'example', title: t('example') },
+              h('textarea', {
+                className: 'dshc-page-field',
+                style: UI.area,
+                value: text,
+                onChange: (event) => {
+                  setText(event.target.value)
+                  setNotice('')
+                },
+              }),
+              h(
+                'div',
+                { style: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' } },
+                h(
+                  'button',
+                  { type: 'button', className: 'dshc-page-primary', style: UI.primary, onClick: () => void copyExample() },
+                  t('copy'),
+                ),
+                notice !== '' ? h('span', { style: UI.hint }, notice) : null,
+              ),
+            ),
+            h(
+              SectionCard,
+              { key: 'preview', title: t('preview') },
+              parsed.ok
+                ? h(CardView, { card: parsed.card })
+                : h(
+                    'div',
+                    { style: UI.empty },
+                    h('span', { style: { fontSize: 32, lineHeight: 1 } }, '⚠️'),
+                    h('span', { style: UI.emptyText }, `${t('broken')}: ${parsed.reason}`),
+                    h('span', { style: UI.hint }, t('brokenHint')),
+                  ),
+            ),
+          ),
         )
       }
 
-      const parsed = parseCard(text)
-
-      return h(
-        'div',
-        { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
-        h('span', { style: { fontSize: 13.5, fontWeight: 600 } }, t('heading')),
-        h('span', { style: { fontSize: 12, opacity: 0.7, lineHeight: 1.5 } }, t('hint')),
-        h(
-          'div',
-          { style: S.card },
-          h(
-            'div',
-            { style: S.panel },
-            h('span', { style: { fontSize: 12, fontWeight: 600, opacity: 0.8 } }, t('example')),
-            h('textarea', { style: S.area, value: text, onChange: (event) => setText(event.target.value) }),
-          ),
-          h(
-            'div',
-            { style: S.panel },
-            h('span', { style: { fontSize: 12, fontWeight: 600, opacity: 0.8 } }, t('preview')),
-            parsed.ok
-              ? h(CardView, { card: parsed.card })
-              : h('span', { style: { fontSize: 12, color: '#d1242f' } }, `${t('broken')}: ${parsed.reason}`),
-          ),
-        ),
-        h(
-          'div',
-          { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
-          h(
-            'button',
-            {
-              style: S.button,
-              onClick: async () => {
-                try {
-                  await navigator.clipboard.writeText('\u0060\u0060\u0060dsh-card\n' + text + '\n\u0060\u0060\u0060')
-                  setNotice(t('copied'))
-                } catch {
-                  setNotice(t('copied'))
-                }
-              },
-            },
-            t('copy'),
-          ),
-          h(ToggleIcon, { open: true, onClick: () => setOpen(false) }),
-        notice !== '' ? h('span', { style: { fontSize: 12, opacity: 0.75 } }, notice) : null,
-        ),
-      )
+      return h('div', { className: 'dshc-page', style: UI.page }, blocks)
     }
 
     /** Большой предпросмотр с редактором — только на странице своего плагина. */
